@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/slice-d/genzai/proto/store";
+option go_package = "github.com/genzai-io/sliced/proto/store";
 package store_pb;
 
 enum Level {

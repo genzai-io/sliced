@@ -7,7 +7,7 @@ package record
 import (
 	"unsafe"
 
-	store_pb "github.com/slice-d/genzai/proto/store"
+	store_pb "github.com/genzai-io/sliced/proto/store"
 )
 
 const maxItems = 256 // max items per node

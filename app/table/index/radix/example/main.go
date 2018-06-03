@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gbrlsnchs/radix"
-	"github.com/slice-d/genzai/item"
+	"github.com/genzai-io/sliced/item"
 )
 
 func main() {

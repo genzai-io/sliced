@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/slice-d/genzai/common/raft"
+	"github.com/genzai-io/sliced/common/raft"
 	"github.com/rs/zerolog"
 )
 

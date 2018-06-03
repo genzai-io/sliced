@@ -169,12 +169,6 @@
   revision = "e294a5482d9a8523f8e6b2744ea2185083c838af"
 
 [[projects]]
-  name = "github.com/gogo/protobuf"
-  packages = ["proto"]
-  revision = "1adfc126b41513cc696b209667c8656ea7aac67c"
-  version = "v1.0.0"
-
-[[projects]]
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
@@ -480,12 +474,6 @@
   revision = "0abe01ef9be25c4aedc174758ec2d917314d6d70"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/tidwall/btree"
-  packages = ["."]
-  revision = "9876f1454cf0993a53d74c27196993e345f50dd1"
-
-[[projects]]
   name = "github.com/tidwall/evio"
   packages = [
     ".",
@@ -502,12 +490,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/tidwall/grect"
-  packages = ["."]
-  revision = "ba9a043346eba55344e40d66a5e74cfda3a9d293"
-
-[[projects]]
-  branch = "master"
   name = "github.com/tidwall/lotsa"
   packages = ["."]
   revision = "a03631ac7f1cd37f159fca01ff6d600b3536d3cf"
@@ -521,10 +503,7 @@
 [[projects]]
   branch = "master"
   name = "github.com/tidwall/rtree"
-  packages = [
-    ".",
-    "base"
-  ]
+  packages = ["base"]
   revision = "6cd427091e0e662cb4f8e2c9eb1a41e1c46ff0d3"
 
 [[projects]]
@@ -538,15 +517,6 @@
   packages = ["msgp"]
   revision = "b2b6a672cf1e5b90748f79b8b81fc8c5cf0571a1"
   version = "1.0.2"
-
-[[projects]]
-  name = "github.com/vmihailenco/msgpack"
-  packages = [
-    ".",
-    "codes"
-  ]
-  revision = "b83fb55e0632418103602b3b23851cabc5d11762"
-  version = "v3.2.8"
 
 [[projects]]
   name = "github.com/willf/bitset"
@@ -622,22 +592,6 @@
   version = "v0.3.0"
 
 [[projects]]
-  name = "google.golang.org/appengine"
-  packages = [
-    ".",
-    "datastore",
-    "internal",
-    "internal/app_identity",
-    "internal/base",
-    "internal/datastore",
-    "internal/log",
-    "internal/modules",
-    "internal/remote_api"
-  ]
-  revision = "150dc57a1b433e64154302bdc40b6bb8aefa313a"
-  version = "v1.0.0"
-
-[[projects]]
   branch = "master"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
@@ -691,6 +645,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "85351c8d3884789b4dbe48e22208c31369f285bf47f0f9bf05a2b0acde3d769b"
+  inputs-digest = "cba526004e8ab4c47e84ce4c54e4969770e27714b02fcd451cebb0491188bb56"
   solver-name = "gps-cdcl"
   solver-version = 1

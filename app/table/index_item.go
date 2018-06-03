@@ -1,8 +1,8 @@
 package table
 
 import (
-	"github.com/slice-d/genzai/app/table/index/btree"
-	"github.com/slice-d/genzai/app/table/index/rtree"
+	"github.com/genzai-io/sliced/app/table/index/btree"
+	"github.com/genzai-io/sliced/app/table/index/rtree"
 )
 
 // IndexItems do not need to be serialized since they

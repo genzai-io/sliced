@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 const (

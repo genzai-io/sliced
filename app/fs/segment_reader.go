@@ -4,9 +4,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/slice-d/genzai/app/mmap"
-	"github.com/slice-d/genzai/app/record"
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/app/mmap"
+	"github.com/genzai-io/sliced/app/record"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 // Optimized for immutable segment files.

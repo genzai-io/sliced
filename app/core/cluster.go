@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/common/raft"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 func newCluster(schema *Store) *ClusterService {

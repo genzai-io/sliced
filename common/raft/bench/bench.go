@@ -6,7 +6,7 @@ package raftbench
 // makes comparing backend performance easier by sharing the tests.
 
 import (
-	"github.com/slice-d/genzai/common/raft"
+	"github.com/genzai-io/sliced/common/raft"
 	"testing"
 )
 

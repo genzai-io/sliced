@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/slice-d/genzai/app/api"
-	"github.com/slice-d/genzai/app/command"
-	"github.com/slice-d/genzai/common/evio"
+	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/app/cmd"
+	"github.com/genzai-io/sliced/common/evio"
 )
 
 var maxCommandBacklog = 10000
@@ -24,8 +24,8 @@ type Conn struct {
 	in   []byte
 
 	// Backlog
-	backlog []command.Command
-	active  command.Command
+	backlog []cmd.Command
+	active  cmd.Command
 
 	// Handler to use to process and commit commands
 	handler api.IHandler
@@ -143,7 +143,7 @@ func (c *Conn) SetHandler(handler api.IHandler) api.IHandler {
 	return prev
 }
 
-func (c *Conn) dispatch(cmd command.Command) {
+func (c *Conn) dispatch(cmd cmd.Command) {
 	c.active = cmd
 	Workers.Dispatch(c)
 }

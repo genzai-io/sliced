@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/slice-d/genzai/btrdb"
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 var (

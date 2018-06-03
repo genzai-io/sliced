@@ -11,10 +11,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/codec/gjson"
-	"github.com/slice-d/genzai/app/table/index/btree"
-	"github.com/slice-d/genzai/common/match"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/codec/gjson"
+	"github.com/genzai-io/sliced/app/table/index/btree"
+	"github.com/genzai-io/sliced/common/match"
 )
 
 var (

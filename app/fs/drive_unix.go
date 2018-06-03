@@ -3,7 +3,7 @@ package fs
 import (
 	"syscall"
 
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 func Statfs(path string) (*store.DriveStats, error) {

@@ -1,7 +1,7 @@
 package core
 
 import (
-	"github.com/slice-d/genzai/btrdb"
+	"github.com/genzai-io/sliced/btrdb"
 )
 
 var StoreSchema = &btrdb.Schema{}

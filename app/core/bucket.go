@@ -1,6 +1,6 @@
 package core
 
-import "github.com/slice-d/genzai/proto/store"
+import "github.com/genzai-io/sliced/proto/store"
 
 // A bucket represents a bucket in a cloud object storage system like S3.
 type Bucket struct {

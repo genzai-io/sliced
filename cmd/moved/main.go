@@ -6,16 +6,16 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/slice-d/genzai/app/core"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced/app/core"
+	"github.com/genzai-io/sliced/common/service"
 	"github.com/spf13/cobra"
 
 	//_ "go.uber.org/automaxprocs"
 
-	"github.com/slice-d/genzai"
+	"github.com/genzai-io/sliced"
 	_ "github.com/rs/zerolog/log"
 
-	"github.com/slice-d/genzai/app/server"
+	"github.com/genzai-io/sliced/app/server"
 	"github.com/rs/zerolog"
 )
 
@@ -236,7 +236,7 @@ type Daemon struct {
 	service.BaseService
 
 	webServer *server.Web
-	server    *server.CommandService
+	server    *server.CmdServer
 }
 
 func (d *Daemon) OnStart() error {
@@ -271,7 +271,7 @@ func (d *Daemon) OnStart() error {
 	}
 
 	// Start Web.
-	d.server = server.NewCommandService()
+	d.server = server.NewCmdServer()
 	if err := d.server.Start(); err != nil {
 		core.Instance.Stop()
 		return err

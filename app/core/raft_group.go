@@ -1,8 +1,8 @@
 package core
 
 import (
-	"github.com/slice-d/genzai/common/raft"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 type RaftGroup struct {

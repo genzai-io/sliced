@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/slice-d/genzai/common/murmur3"
+	"github.com/genzai-io/sliced/common/murmur3"
 )
 
 type entry struct {

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/proto/store"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/proto/store"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 var (

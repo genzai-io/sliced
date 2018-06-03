@@ -13,9 +13,9 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/fsnotify/fsnotify"
-	"github.com/slice-d/genzai/common/pid"
-	"github.com/slice-d/genzai/common/raft"
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/common/pid"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/genzai-io/sliced/proto/store"
 	"github.com/rcrowley/go-metrics"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"

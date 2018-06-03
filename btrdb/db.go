@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tidwall/btree"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/grect"
-	"github.com/tidwall/match"
-	"github.com/tidwall/rtree"
+	"github.com/genzai-io/sliced/common/btree"
+	"github.com/genzai-io/sliced/common/gjson"
+	"github.com/genzai-io/sliced/common/grect"
+	"github.com/genzai-io/sliced/common/match"
+	"github.com/genzai-io/sliced/common/rtree"
 )
 
 // DB represents a collection of key-value pairs that persist on disk.

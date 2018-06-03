@@ -5,10 +5,10 @@ import (
 	"sync"
 
 	//"github.com/coreos/bbolt"
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/api"
-	"github.com/slice-d/genzai/btrdb"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 // Each slice has it's own independent store

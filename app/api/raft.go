@@ -1,6 +1,6 @@
 package api
 
-import "github.com/slice-d/genzai/common/raft"
+import "github.com/genzai-io/sliced/common/raft"
 
 const (
 	GetName    = "GET"

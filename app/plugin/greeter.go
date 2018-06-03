@@ -6,7 +6,7 @@ import (
 	"plugin"
 	"time"
 
-	"github.com/slice-d/genzai"
+	"github.com/genzai-io/sliced"
 )
 
 type Greeter interface {

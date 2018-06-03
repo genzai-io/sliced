@@ -3,7 +3,7 @@ package api
 import (
 	"errors"
 
-	"github.com/slice-d/genzai/common/redcon"
+	"github.com/genzai-io/sliced/common/redcon"
 )
 
 //

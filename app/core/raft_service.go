@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/api"
-	"github.com/slice-d/genzai/common/raft"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 type RaftStatus byte

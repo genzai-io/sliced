@@ -3,9 +3,9 @@ package core
 import (
 	"encoding/binary"
 
-	"github.com/slice-d/genzai/app/fs"
-	"github.com/slice-d/genzai/app/record"
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/app/fs"
+	"github.com/genzai-io/sliced/app/record"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 // An instance of a Topic definition.

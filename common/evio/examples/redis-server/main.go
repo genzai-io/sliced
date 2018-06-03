@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/slice-d/genzai/common/evio"
-	"github.com/slice-d/genzai/common/redcon"
+	"github.com/genzai-io/sliced/common/evio"
+	"github.com/genzai-io/sliced/common/redcon"
 )
 
 type conn struct {

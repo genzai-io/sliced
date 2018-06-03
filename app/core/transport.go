@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/api"
-	cmd "github.com/slice-d/genzai/app/command"
-	"github.com/slice-d/genzai/common/raft"
-	"github.com/slice-d/genzai/common/redcon"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/api"
+	cmd "github.com/genzai-io/sliced/app/cmd"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 const (

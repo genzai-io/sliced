@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	api_pb "github.com/slice-d/genzai/proto/api"
+	api_pb "github.com/genzai-io/sliced/proto/api"
 )
 
 //

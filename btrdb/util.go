@@ -3,7 +3,7 @@ package btrdb
 import (
 	"encoding/binary"
 
-	"github.com/slice-d/genzai/app/codec/gjson"
+	"github.com/genzai-io/sliced/common/gjson"
 )
 
 func Contains(tx *Tx, key string) bool {
@@ -11,7 +11,7 @@ func Contains(tx *Tx, key string) bool {
 	return err != ErrNotFound
 }
 
-func ChooseLess(val interface{}) func (a, b string) bool {
+func ChooseLess(val interface{}) func(a, b string) bool {
 	switch v := val.(type) {
 	case int, int32, uint32, int64, uint64:
 		return IndexInt

@@ -3,9 +3,9 @@ package table
 import (
 	"unsafe"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/codec/gjson"
-	"github.com/slice-d/genzai/app/codec/sjson"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/common/gjson"
+	"github.com/genzai-io/sliced/common/sjson"
 )
 
 type DocumentFlags int

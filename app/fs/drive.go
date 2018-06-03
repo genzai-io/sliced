@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/slice-d/genzai"
-	store_pb "github.com/slice-d/genzai/proto/store"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	store_pb "github.com/genzai-io/sliced/proto/store"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 type Drive struct {

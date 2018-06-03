@@ -17,7 +17,7 @@ import (
 	"github.com/google/btree"
 	"github.com/tidwall/lotsa"
 
-	store_pb "github.com/slice-d/genzai/proto/store"
+	store_pb "github.com/genzai-io/sliced/proto/store"
 )
 
 func init() {

@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/slice-d/genzai/common/redcon"
+	"github.com/genzai-io/sliced/common/redcon"
 )
 
 var (

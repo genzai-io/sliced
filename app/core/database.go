@@ -3,10 +3,10 @@ package core
 import (
 	"sync"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/ring"
-	"github.com/slice-d/genzai/common/service"
-	store_pb "github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/ring"
+	"github.com/genzai-io/sliced/common/service"
+	store_pb "github.com/genzai-io/sliced/proto/store"
 )
 
 // Database's are isolated from each other and have their own Slices and

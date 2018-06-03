@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/middleware"
-	"github.com/slice-d/genzai"
+	"github.com/genzai-io/sliced"
 	"github.com/rs/zerolog"
 )
 

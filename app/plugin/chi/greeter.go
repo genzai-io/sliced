@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/slice-d/genzai"
+	"github.com/genzai-io/sliced"
 )
 
 type greeting string

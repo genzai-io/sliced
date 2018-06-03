@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/slice-d/genzai/common/raft/bench"
+	"github.com/genzai-io/sliced/common/raft/bench"
 )
 
 func BenchmarkFastLogStore_FirstIndex(b *testing.B) {

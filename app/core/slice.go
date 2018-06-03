@@ -1,6 +1,6 @@
 package core
 
-import "github.com/slice-d/genzai/proto/store"
+import "github.com/genzai-io/sliced/proto/store"
 
 type Slice struct {
 	model  *store.Slice

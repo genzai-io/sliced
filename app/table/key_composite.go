@@ -3,8 +3,8 @@ package table
 import (
 	"fmt"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/table/index/btree"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/table/index/btree"
 )
 
 // Composite keys have 2 or more keys and the keys cannot be other composite keys

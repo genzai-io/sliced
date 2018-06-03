@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 // Iterates through a Segment formatted file using a non-mapped buffer.

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/kavu/go_reuseport"
-	"github.com/slice-d/genzai/common/evio/internal"
+	"github.com/genzai-io/sliced/common/evio/internal"
 )
 
 type conn struct {

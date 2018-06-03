@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/mmap"
-	"github.com/slice-d/genzai/app/path"
-	"github.com/slice-d/genzai/app/pool/pbufio"
-	"github.com/slice-d/genzai/app/record"
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/mmap"
+	"github.com/genzai-io/sliced/app/path"
+	"github.com/genzai-io/sliced/app/pool/pbufio"
+	"github.com/genzai-io/sliced/app/record"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 var (

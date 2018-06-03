@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 func SegmentPath(segment *store.Segment) string {

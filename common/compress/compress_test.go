@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/slice-d/genzai/compress/lz4"
+	"github.com/genzai-io/sliced/common/lz4"
 )
 
 func TestHelper_Decompress(t *testing.T) {

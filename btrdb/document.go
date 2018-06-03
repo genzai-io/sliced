@@ -3,8 +3,7 @@ package btrdb
 type DocumentType byte
 
 const (
-	JSON     DocumentType = 0
-	Protobuf DocumentType = 1
+	JSON DocumentType = 0
 )
 
 type Serializable interface {
@@ -24,14 +23,6 @@ type Marshaler interface {
 // buffer.
 type Unmarshaler interface {
 	Unmarshal([]byte) error
-}
-
-type FieldIterator interface {
-
-}
-
-type Parser interface {
-
 }
 
 type Factory func() Serializable

@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/codec/gjson"
-	"github.com/slice-d/genzai/app/table/index/btree"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/codec/gjson"
+	"github.com/genzai-io/sliced/app/table/index/btree"
 )
 
 // A multidimensional rectangle for spatial queries and indexing.

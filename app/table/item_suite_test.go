@@ -7,7 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/slice-d/genzai/app/table"
+	"github.com/genzai-io/sliced/app/table"
 )
 
 func TestItem(t *testing.T) {

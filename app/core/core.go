@@ -1,10 +1,10 @@
 package core
 
 import (
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/api"
-	"github.com/slice-d/genzai/app/fs"
-	"github.com/slice-d/genzai/common/service"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/app/fs"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 var Instance *Service

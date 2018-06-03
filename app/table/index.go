@@ -4,9 +4,9 @@ import (
 	"io"
 
 	"github.com/armon/go-radix"
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/table/index/btree"
-	"github.com/slice-d/genzai/app/table/index/rtree"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/table/index/btree"
+	"github.com/genzai-io/sliced/app/table/index/rtree"
 )
 
 const btreeDegrees = 32

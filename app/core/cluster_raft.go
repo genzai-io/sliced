@@ -1,11 +1,11 @@
 package core
 
 import (
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/app/api"
-	"github.com/slice-d/genzai/common/raft"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/common/raft"
 
-	cmd "github.com/slice-d/genzai/app/command"
+	cmd "github.com/genzai-io/sliced/app/cmd"
 )
 
 // IRaftStore represents a raft store that conforms to

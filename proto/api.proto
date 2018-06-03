@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/slice-d/genzai/proto/api";
+option go_package = "github.com/genzai-io/sliced/proto/api";
 
 package api;
 

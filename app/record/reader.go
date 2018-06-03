@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 // A sequential optimized file reader that memory mmaps an entire file

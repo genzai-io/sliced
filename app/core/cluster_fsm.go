@@ -3,7 +3,7 @@ package core
 import (
 	"io"
 
-	"github.com/slice-d/genzai/common/raft"
+	"github.com/genzai-io/sliced/common/raft"
 )
 
 type clusterFSM ClusterService

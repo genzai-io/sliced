@@ -1,7 +1,7 @@
 package table
 
 import (
-	"github.com/slice-d/genzai/app/codec/gjson"
+	"github.com/genzai-io/sliced/app/codec/gjson"
 )
 
 type IndexOpts int

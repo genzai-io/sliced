@@ -14,7 +14,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/slice-d/genzai/common/spinlock"
+	"github.com/genzai-io/sliced/common/spinlock"
 	"github.com/tidwall/lotsa"
 )
 

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/slice-d/genzai/common/redbench"
+import "github.com/genzai-io/sliced/common/redbench"
 
 func main() {
 	redbench.Bench("SET", "127.0.0.1:6379", nil, nil, func(buf []byte) []byte {

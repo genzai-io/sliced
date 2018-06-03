@@ -19,13 +19,13 @@ import (
 
 const (
 	GO_VERSION   = "1.10.1"
-	APP_PATH     = "github.com/slice-d/genzai/cmd/moved"
+	APP_PATH     = "github.com/genzai-io/sliced/cmd/moved"
 	MAC_TARGET   = "darwin/amd64"
 	WIN_TARGET   = "windows/*"
 	LINUX_TARGET = "linux/amd64"
 )
 
-var pkgPrefixLen = len("github.com/slice-d/genzai")
+var pkgPrefixLen = len("github.com/genzai-io/sliced")
 
 // allow user to override go executable by running as GOEXE=xxx make ... on unix-like systems
 var goexe = "go"

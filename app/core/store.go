@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/slice-d/genzai"
-	"github.com/slice-d/genzai/btrdb"
-	"github.com/slice-d/genzai/common/service"
-	"github.com/slice-d/genzai/proto/store"
+	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/service"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 // Database of all Database meta-data and schema membership and cluster membership services.
