@@ -1,0 +1,33 @@
+# File system path where the Store DB can persist to
+path: /etc/sliced
+
+
+# Ports
+web:
+  host: ":9001"
+
+api:
+  host: ":9002"
+  loops: 1
+
+cluster:
+  addr: ""
+
+roll:
+  duration: 1D
+  count: 1000000
+  size: 10G
+
+data:
+  roll:
+    duration: "1D"
+    size: "5G"
+
+drives:
+  home:
+    type: ssd
+  /dev/nvme0n1:
+    type: hdd
+
+logging:
+  level: "DEBUG"

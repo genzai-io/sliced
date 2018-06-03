@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option go_package = "github.com/slice-d/genzai/proto/api";
+
+package api;
+
+service APIService {
+    rpc Auth (AuthRequest) returns (AuthReply);
+    rpc Register (RegisterRequest) returns (RegisterReply);
+    rpc Events (EventsRequest) returns (stream Event);
+}
+
+message AuthRequest {
+}
+
+message AuthReply {
+}
+
+message RegisterRequest {
+}
+message RegisterReply {
+}
+
+message EventsRequest {
+}
+
+message Event {
+}

@@ -1,0 +1,48 @@
+.nav-menu li {
+    padding: 15px 20px !important;
+    cursor: pointer !important;
+    color: #394B59;
+    font-size: 16px;
+    font-weight: 300;
+    border-top: 1px solid #CED9E0;
+}
+
+.pt-dark .nav-menu li {
+    color: #EBF1F5 !important;
+    border-top: 1px solid #182026 !important;
+}
+
+/* Add the bottom border to the last child */
+.nav-menu li:last-child {
+    border-bottom: 1px solid #CED9E0;
+}
+
+.pt-dark .nav-menu li:last-child {
+    border-bottom: 1px solid #182026;
+}
+
+/* Handle hover */
+.nav-menu li:hover {
+    background-color: #F5F8FA;
+    color: #202B33;
+    font-weight: 500;
+}
+
+.pt-dark .nav-menu li:hover {
+    background-color: #293742;
+    color: #F5F8FA;
+    font-weight: 500;
+}
+
+/* Selected style */
+.nav-menu li.selected {
+    background-color: #E1E8ED;
+    border-top: 1px solid #CED9E0;
+    font-weight: 500;
+}
+
+.pt-dark .nav-menu li.selected {
+    background-color: #202B33;
+    border-top: 1px solid #182026;
+    font-weight: 500;
+}

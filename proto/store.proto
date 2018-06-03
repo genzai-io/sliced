@@ -1,0 +1,497 @@
+syntax = "proto3";
+
+option go_package = "github.com/slice-d/genzai/proto/store";
+package store_pb;
+
+enum Level {
+    MISSION = 0;
+    BUSINESS = 1;
+    BACKGROUND = 2;
+}
+
+enum Codec {
+    JSON = 0;
+    PROTOBUF = 1;
+    MSGPACK = 2;
+    CBOR = 3;
+}
+
+//enum MembershipType {
+//    VOTER = 0;
+//    NON_VOTER = 1;
+//}
+
+enum Suffrage {
+    VOTER = 0;
+    NON_VOTER = 1;
+    STAGING = 2;
+}
+
+// Worker Application
+message App {
+    uint64 id = 1;
+    string name = 2;
+    string desc = 3;
+
+    repeated string versions = 9;
+    repeated string tags = 10;
+}
+
+// A Processor node is a client app that connects to the cluster
+// and can accept work to "process".
+message Worker {
+    string id = 1;
+    string version = 2;
+    string address = 3;
+
+    int64 memory = 5;
+    int32 cpus = 6;
+
+    // List of queues it's able to process
+    repeated string queues = 10;
+}
+
+enum RaftStatus {
+    FOLLOWER = 0;
+    CANDIDATE = 1;
+    LEADER = 2;
+    SHUTDOWN = 3;
+}
+
+// slice/d Node
+message Node {
+    string id = 1;
+    string host = 2;
+    string version = 3;
+    // VM / Server ID
+    string instanceID = 4;
+    // Datacenter region
+    string region = 7;
+    // Availability zone
+    string zone = 8;
+    uint32 cores = 9;
+    uint64 memory = 10;
+    string os = 50;
+    string arch = 51;
+    uint64 cpuSpeed = 52;
+
+    // Config
+    bool bootstrap = 11;
+    string webHost = 12;
+    string apiHost = 13;
+    uint32 apiLoops = 14;
+
+    // Raft
+    RaftMember member = 16;
+
+    fixed64 created = 18;
+    fixed64 inited = 19;
+    fixed64 changed = 20;
+    fixed64 dropped = 21;
+    fixed64 removed = 22;
+
+    // Attached drives / volumes
+    repeated Drive drives = 24;
+}
+
+message RaftMember {
+    string id = 1;
+    string address = 2;
+    RaftStatus status = 3;
+    // Eventual suffrage status VOTER or NON_VOTER
+    Suffrage membership = 4;
+    // Current Suffrage Status
+    Suffrage suffrage = 5;
+
+    // Current term
+    uint64 term = 10;
+    // Applied index
+    uint64 applied = 11;
+}
+
+// A grouping of nodes that can form Slice Groups.
+// Essentially this acts as a Raft Group template.
+message NodeGroup {
+    int64 id = 1;
+    string name = 2;
+    repeated Member members = 3;
+
+    Slice slices = 10;
+
+    message Member {
+        string nodeID = 1;
+        Suffrage suffrage = 2;
+    }
+}
+
+message Database {
+    int32 id = 1;
+    string name = 2;
+    string description = 3;
+    fixed64 created = 4;
+    fixed64 changed = 5;
+    fixed64 dropped = 6;
+    fixed64 removed = 7;
+
+    // Slices
+    repeated Slice slices = 10;
+}
+
+message SliceID {
+    // Database ID
+    int32 databaseID = 1;
+    // Slice number
+    int32 sliceID = 2;
+}
+
+// Each Slice has it's own Raft group and represents some
+// range of the total slots of a database.
+message Slice {
+    SliceID id = 1;
+    // Ring
+    repeated SlotRange slots = 2;
+    // Membership
+    repeated SliceNode nodes = 3;
+}
+
+message SliceNode {
+    string nodeID = 1;
+    SliceID sliceID = 2;
+    RaftMember member = 3;
+
+}
+
+// A slice is a partition or shard represented by mapping a
+// range of Slots from the hash-ring. There are 16384 slots
+// in the hash-ring and a slice is mapped to at least one slot.
+//message Slice {
+//    int32 id = 1;
+//    Bucket bucket = 2;
+//    // A slice may have multiple ranges
+//    repeated SlotRange ranges = 3;
+//    repeated string nodeIds = 4;
+//}
+
+message Rebalance {
+    int64 timestamp = 1;
+    repeated Task tasks = 2;
+
+    message Task {
+        int32 from = 1;
+        int32 to = 2;
+        int32 low = 3;
+        int32 count = 4;
+    }
+}
+
+message Ring {
+    repeated SlotRange ranges = 2;
+}
+
+message SlotRange {
+    int32 slice = 1;
+    // The low slot
+    int32 low = 2;
+    // The high slot
+    int32 high = 3;
+}
+
+// Locally mounted volume
+message Drive {
+    string mount = 1;
+    Kind kind = 2;
+    DriveStats stats = 3;
+    bool working = 4;
+    string fileSystem = 5;
+
+    enum Kind {
+        HDD = 0;
+        SSD = 1;
+        NVME = 2;
+    }
+}
+
+message DriveStats {
+    uint64 size = 1;
+    uint64 used = 2;
+    uint64 avail = 3;
+}
+
+message Bucket {
+    string id = 1;
+    string accessKey = 2;
+    string secretKey = 3;
+    string url = 4;
+    API api = 5;
+
+    enum API {
+        S3 = 0;
+    }
+}
+
+message RecordID {
+    uint64 epoch = 1;
+    uint64 seq = 2;
+}
+
+message Record {
+    Projection key = 1;
+    Projection slice = 2;
+}
+
+message Projection {
+    Codec codec = 1;
+    repeated string names = 2;
+
+    message Field {
+        int32 id = 1;
+        string name = 2;
+    }
+}
+
+message Index {
+    enum Type {
+        BTREE = 0;
+        PREFIX = 2;
+        RTREE = 3;
+        FULLTEXT = 1;
+    }
+}
+
+// Low level append-only log of user-defined records.
+message Topic {
+    string schema = 15;
+
+    int64 id = 1;
+    string name = 2;
+    // Slot to default to if sliceKey isn't set
+    uint32 slot = 3;
+    Type type = 4;
+    sint64 queueID = 5;
+    string rollerID = 6;
+    Mode mode = 7;
+
+    int32 writeSpeed = 8;
+    Codec codec = 9;
+
+    // A "Keyed" topic (Primary Key) turns a topic into a table
+    Projection key = 10;
+
+    // The key projection used to determines how to choose the right
+    // slice / "shard" / "partition" based on a single record
+    Projection sliceKey = 11;
+
+    // Recommended Drive type
+    Drive.Kind drive = 12;
+
+    enum Type {
+        STANDARD = 0;
+    }
+
+    enum Mode {
+        // Topic is used as a "Log"
+        LOG = 0;
+        // Topic is used as a "Job Queue"
+        QUEUE = 1;
+        // Tables allow for updates based on a specified "key"
+        TABLE = 2;
+        // Cache mode does not persist to disk
+        CACHE = 3;
+    }
+}
+
+// Definition of a roller which decides when to create new segment files.
+message Roller {
+    uint64 id = 1;
+    string name = 2;
+    uint64 minBytes = 3;
+    uint64 minAge = 4;
+    uint64 minCount = 5;
+    uint64 maxBytes = 6;
+    uint64 maxAge = 7;
+    uint64 maxCount = 8;
+}
+
+message Path {
+    // Name of file
+    // This is a path string scoped under a volume
+    // /volume/drive
+    string name = 1;
+    // Volume ID
+    string volumeID = 2;
+    // Drive
+    string drive = 3;
+    // Flag whether file is local
+    bool local = 4;
+    // Flag whether file is in a remote bucket
+    bool bucket = 5;
+
+    enum Type {
+        Local = 0;
+        Bucket = 1;
+    }
+}
+
+message Hash {
+    string algorithm = 1;
+    bytes value = 2;
+
+    enum Algorithm {
+        CRC32 = 0;
+    }
+}
+
+// An appender will eventually seal it's current file
+// and start appending to a brand new file. These files
+// are called "Segments".
+message Segment {
+    // Sequence of the segment within a topic
+    uint64 id = 1;
+    // ID of the stream
+    sint64 topicID = 2;
+    // Slice that owns the segment
+    int32 slice = 3;
+    // Location of file
+    Path path = 4;
+    // Header
+    SegmentHeader header = 5;
+    // Stats of a single segment
+    SegmentStats stats = 6;
+}
+
+message SegmentStats {
+    // Hash of the entire contents of the file
+    Hash hash = 1;
+    // Number of records
+    uint64 count = 2;
+    // Cumulative size of all headers in bytes
+    uint64 header = 3;
+    // Cumulative size of all bodies in bytes
+    uint64 body = 4;
+    // Size of entire file in bytes
+    int64 size = 5;
+    // The size in bytes of the largest body
+    uint32 maxBody = 6;
+    // First record
+    RecordPointer first = 7;
+    // Last record
+    RecordPointer last = 8;
+}
+
+message SegmentHeader {
+    uint64 timestamp = 1;
+    sint64 topicID = 2;
+    uint64 logID = 3;
+    int64 startIndex = 4;
+}
+
+message GlobalID {
+    int64 id = 1;
+    int32 slot = 2;
+    RecordID recID = 3;
+}
+
+message RecordPointer {
+    RecordID id = 1;
+    // Log ID
+    uint64 logID = 2;
+    // Slot
+    uint32 slot = 3;
+    // Size of the body
+    uint32 size = 4;
+    // Position of first byte of the body
+    int64 pos = 5;
+}
+
+// Queue or Message Queue is a higher level construct that manage the
+// lifecycle of a Job queue. 3 topics are constructed.
+message Queue {
+    uint64 id = 1;
+    string name = 2;
+    uint64 requestID = 3;
+    // ACK stream ID
+    uint64 replyID = 4;
+    // ERR or Dead-Letter stream
+    uint64 errorID = 5;
+    // Management level
+    Level level = 6;
+    // Fifo order
+    bool fifo = 10;
+    uint64 maxInflight = 11;
+    uint64 maxVisibility = 12;
+    uint64 maxDelay = 13;
+    uint32 maxRetries = 14;
+    string appID = 15;
+
+    repeated string tags = 16;
+}
+
+message Daemon {
+    uint64 id = 1;
+    string name = 2;
+    Level level = 3;
+}
+
+
+message InitNode {
+    Node node = 1;
+}
+
+message AddNodeToGroup {
+    string nodeID = 1;
+    int64 groupID = 2;
+    Suffrage suffrage = 3;
+    bool bootstrap = 4;
+}
+
+message CreateDatabaseRequest {
+    string name = 1;
+}
+
+message CreateDatabaseReply {
+
+}
+
+message TxCreateTopic {
+    string name = 1;
+    Level level = 2;
+    string roller = 3;
+    string appID = 4;
+}
+
+message TxCreateQueue {
+    string name = 1;
+    Level level = 2;
+    string roller = 3;
+    bool fifo = 5;
+    uint64 maxInflight = 6;
+    uint64 maxVisibility = 7;
+    uint64 maxDelay = 8;
+    uint32 maxRetries = 9;
+    string appID = 10;
+}
+
+message TxCreateSegment {
+
+}
+
+message TxRoll {
+    int64 rollerID = 1;
+}
+
+message TxDeleteTopic {
+
+}
+
+message TxChangeRing {
+    repeated Slice from = 1;
+    repeated Slice to = 2;
+}
+
+message TxChangeRingCancel {
+}
+
+// Splits a topic based on a new ring signature
+message TxSplitTopic {
+
+}

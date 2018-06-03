@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "es6",
+    "esModuleInterop": true,
+    "jsx": "react",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "pretty": true,
+    "stripInternal": true,
+    "allowSyntheticDefaultImports": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedParameters": false,
+    "importHelpers": true,
+    "noStrictGenericChecks": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "declaration": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noUnusedLocals": true,
+    "removeComments": false,
+    "strictNullChecks": false,
+    "strictPropertyInitialization": true,
+    "outDir": "build",
+    "lib": [
+      "es6",
+      "es7",
+      "dom",
+      "dom.iterable",
+      "es5",
+      "es2015.iterable"
+    ],
+    "baseUrl": "src",
+    "paths": {
+      "app/*": [
+        "./app/*"
+      ]
+    }
+  },
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules"
+  ]
+}

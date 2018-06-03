@@ -1,0 +1,31 @@
+builds:
+  -
+    main: ./cmd/sliced/main.go
+    binary: sliced
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+
+# Archive customization
+archive:
+  format: tar.gz
+  format_overrides:
+    - goos: windows
+      format: zip
+  name_template: "{{.Binary}}_{{.Version}}_{{.Os}}-{{.Arch}}"
+  replacements:
+    amd64: 64bit
+    darwin: macOS
+    linux: linux
+
+  files:
+    - README.md
+    - LICENSE
+
+git:
+  short_hash: true
+
+release:
+  draft: true

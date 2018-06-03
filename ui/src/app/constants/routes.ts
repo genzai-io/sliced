@@ -1,0 +1,8 @@
+export const ROUTE_HOME = '/'
+export const ROUTE_AUTH = '/auth'
+export const ROUTE_DASHBOARD = '/dashboard'
+export const ROUTE_CLUSTER = '/cluster'
+export const ROUTE_ACTIONS = '/actions'
+export const ROUTE_LOGS = '/logs'
+export const ROUTE_ALERTS = '/alerts'
+export const ROUTE_SETTINGS = '/settings'
