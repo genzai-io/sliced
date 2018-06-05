@@ -1,21 +1,24 @@
 package cmd
 
-import "github.com/genzai-io/sliced/app/api"
+import (
+	"github.com/genzai-io/sliced/app/api"
+	"strings"
+)
 
 // Parse and process next command
 func (h *handler) Parse(ctx *Context) Command {
-	factory, ok := api.Commands[ctx.Name]
+	factory, ok := api.Commands[string(ctx.Args[0])]
 	if !ok {
 		return parseOld(ctx)
 	}
 
-	return factory.Parse(ctx)
+	return factory.Parse(ctx.Args)
 }
 
 func parseOld(ctx *Context) Command {
-	switch ctx.Name {
+	switch strings.ToLower(string(ctx.Args[0])) {
 	default:
-		return ERR("invalid command")
+		return ERR("ERR invalid command")
 
 	case "SLEEP":
 		return &Sleep{}

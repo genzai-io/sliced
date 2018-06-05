@@ -17,8 +17,9 @@ type RaftDemote struct {
 	raft api.RaftService
 }
 
+func (c *RaftDemote) IsError() bool  { return false }
 func (c *RaftDemote) IsChange() bool { return false }
-func (c *RaftDemote) IsAsync() bool  { return true }
+func (c *RaftDemote) IsWorker() bool  { return true }
 
 func (c *RaftDemote) Marshal(buf []byte) []byte {
 	if c.ID.Schema < 0 {
@@ -35,44 +36,41 @@ func (c *RaftDemote) Marshal(buf []byte) []byte {
 	return buf
 }
 
-func (c *RaftDemote) Parse(ctx *Context) api.Command {
+func (c *RaftDemote) Parse(args [][]byte) Command {
 	cmd := &RaftDemote{}
 
-	switch len(ctx.Args) {
+	switch len(args) {
 	default:
-		ctx.Err("invalid params")
-		return cmd
+		return Err("ERR invalid params")
 
 	case 2:
 		// Set schema and slice to -1 indicating we want the global store raft
 		cmd.ID = api.GlobalRaftID
-		cmd.Address = string(ctx.Args[1])
+		cmd.Address = string(args[1])
 		return cmd
 
 	case 4:
 		// Parse schema
-		schemaID, err := strconv.Atoi(string(ctx.Args[1]))
+		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			ctx.Err("invalid schema id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid schema id: " + string(args[2]))
 		}
 		cmd.ID.Schema = int32(schemaID)
 
 		// Parse slice
-		sliceID, err := strconv.Atoi(string(ctx.Args[2]))
+		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
-			ctx.Err("invalid slice id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid slice id: " + string(args[2]))
 		}
 		cmd.ID.Slice = int32(sliceID)
 
 		// Set address
-		cmd.Address = string(ctx.Args[3])
+		cmd.Address = string(args[3])
 	}
 	return cmd
 }
 
-func (c *RaftDemote) Handle(ctx *Context) {
+func (c *RaftDemote) Handle(ctx *Context) Reply {
 	if c.raft == nil {
 		// Find Raft
 		c.raft = api.GetRaftService(c.ID)
@@ -80,16 +78,12 @@ func (c *RaftDemote) Handle(ctx *Context) {
 
 	// Do we have a matching Raft service
 	if c.raft == nil {
-		ctx.Err("not exist")
-		return
+		return Err("ERR not exist")
 	}
 
 	if err := c.raft.Demote(c.Address); err != nil {
-		ctx.Error(err)
-		return
+		return Error(err)
 	}
 
-	ctx.OK()
+	return Ok
 }
-
-func (c *RaftDemote) Apply(ctx *Context) {}

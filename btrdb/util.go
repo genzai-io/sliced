@@ -12,7 +12,7 @@ func Contains(tx *Tx, key string) bool {
 }
 
 func ChooseLess(val interface{}) func(a, b string) bool {
-	switch v := val.(type) {
+	switch val.(type) {
 	case int, int32, uint32, int64, uint64:
 		return IndexInt
 	case string:

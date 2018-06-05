@@ -1,8 +1,6 @@
 package api
 
 import (
-	"errors"
-
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
@@ -29,14 +27,10 @@ type Context struct {
 	Conn   Conn     // Connection
 	Out    []byte   // Output buffer to write to connection
 	Index  int      // Index of command
-	Name   string   // Current command name
-	RaftID RaftID   // Raft ID
-	Slot   uint16   // Slot the command is for
 	Key    string   // Extract if it exists
 	Packet []byte   // Raw byte slice of current command
 	Args   [][]byte // Current command args. First index is the command name.
 	Ops    int      // Count of total operations that occurred from processing commands
-	ERR    error    // Error for current command
 
 	// Transactional holders
 	//Set *table.Table
@@ -55,7 +49,7 @@ func (c *Context) Int(index int, or int) int {
 	return or
 }
 
-// Append a redis "OK" message
+// Append a redis "Ok" message
 func (c *Context) OK() []byte {
 	c.Out = redcon.AppendOK(c.Out)
 	return c.Out
@@ -65,14 +59,12 @@ func (c *Context) Error(err error) []byte {
 	if err == nil {
 		return c.Out
 	}
-	c.ERR = err
 	c.Out = redcon.AppendError(c.Out, err.Error())
 	return c.Out
 }
 
 // Append a redis "ERR" message
 func (c *Context) Err(msg string) []byte {
-	c.ERR = errors.New(msg)
 	c.Out = redcon.AppendError(c.Out, msg)
 	return c.Out
 }
@@ -124,23 +116,23 @@ func (c *Context) HasChanges() bool {
 }
 
 func (c *Context) AddChange(cmd Command, data []byte) {
-	if c.Changes == nil {
-		c.Changes = map[RaftID]*ChangeSet{
-			c.RaftID: {
-				Cmds: []Command{cmd},
-				Data: data,
-			},
-		}
-	} else {
-		set, ok := c.Changes[c.RaftID]
-		if !ok {
-			c.Changes[c.RaftID] = &ChangeSet{
-				Cmds: []Command{cmd},
-				Data: c.Packet,
-			}
-		} else {
-			set.Cmds = append(set.Cmds, cmd)
-			set.Data = append(set.Data, c.Packet...)
-		}
-	}
+	//if c.Changes == nil {
+	//	c.Changes = map[RaftID]*ChangeSet{
+	//		c.RaftID: {
+	//			Cmds: []Command{cmd},
+	//			Data: data,
+	//		},
+	//	}
+	//} else {
+	//	set, ok := c.Changes[c.RaftID]
+	//	if !ok {
+	//		c.Changes[c.RaftID] = &ChangeSet{
+	//			Cmds: []Command{cmd},
+	//			Data: c.Packet,
+	//		}
+	//	} else {
+	//		set.Cmds = append(set.Cmds, cmd)
+	//		set.Data = append(set.Data, c.Packet...)
+	//	}
+	//}
 }

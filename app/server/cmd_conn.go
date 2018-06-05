@@ -41,9 +41,9 @@ type Conn struct {
 	raft api.RaftService
 
 	// Stats
-	statsTotalCommands   uint64
-	statsTotalUpstream   uint64
-	statsTotalDownstream uint64
+	statsTotalCommands uint64
+	statsIngress       uint64
+	statsEgress        uint64
 
 	statsAsyncCommands uint64
 	statsAsyncOps      uint64
@@ -75,38 +75,36 @@ func (c *Conn) SetKind(kind api.ConnKind) {
 	c.mu.Unlock()
 }
 
-func (c *Conn) Invoke(ctx *api.Context, cmd api.Command) {
+func (c *Conn) Invoke(ctx *api.Context, cmd api.Command) api.CommandReply {
 	c.mu.Lock()
 	if c.action != evio.None {
 		c.mu.Unlock()
-		ctx.Err("closed")
-		return
+		return api.Err("ERR closed")
 	}
 
 	if c.active != nil {
 		if len(c.backlog) > maxCommandBacklog {
 			c.mu.Unlock()
-			ctx.Err("backlog filled")
-			return
+			return api.Err("ERR backlog filled")
 		}
 
 		c.backlog = append(c.backlog, cmd)
+		c.mu.Unlock()
+		return nil
 	} else {
-		if cmd.IsAsync() {
+		if cmd.IsWorker() {
 			atomic.AddUint64(&c.statsAsyncCommands, 1)
 			// Set background context
 			c.ctx = &api.Context{}
 			c.dispatch(cmd)
+			c.mu.Unlock()
+			return nil
 		} else {
-			before := len(ctx.Out)
-			cmd.Handle(ctx)
-
-			if len(ctx.Out) == before {
-				c.dispatch(cmd)
-			}
+			reply := cmd.Handle(ctx)
+			c.mu.Unlock()
+			return reply
 		}
 	}
-	c.mu.Unlock()
 }
 
 func (c *Conn) Raft() api.RaftService {
@@ -209,7 +207,7 @@ func (c *Conn) woke() *api.Context {
 	index := -1
 LOOP:
 	for i, cmd := range c.backlog {
-		if cmd.IsAsync() {
+		if cmd.IsWorker() {
 			index = i
 			break LOOP
 		} else {

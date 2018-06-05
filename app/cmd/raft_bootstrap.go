@@ -15,8 +15,9 @@ type RaftBootstrap struct {
 	raft api.RaftService
 }
 
+func (c *RaftBootstrap) IsError() bool { return false }
 func (c *RaftBootstrap) IsChange() bool { return false }
-func (c *RaftBootstrap) IsAsync() bool  { return true }
+func (c *RaftBootstrap) IsWorker() bool  { return true }
 
 func (c *RaftBootstrap) Marshal(buf []byte) []byte {
 	if c.ID.Schema < 0 {
@@ -31,13 +32,12 @@ func (c *RaftBootstrap) Marshal(buf []byte) []byte {
 	return buf
 }
 
-func (c *RaftBootstrap) Parse(ctx *Context) api.Command {
+func (c *RaftBootstrap) Parse(args [][]byte) Command {
 	cmd := &RaftBootstrap{}
 
-	switch len(ctx.Args) {
+	switch len(args) {
 	default:
-		ctx.Err("expected 0 or 2 params")
-		return cmd
+		return Err("ERR expected 0 or 2 params")
 
 	case 1:
 		// Set schema and slice to -1 indicating we want the global store raft
@@ -46,41 +46,35 @@ func (c *RaftBootstrap) Parse(ctx *Context) api.Command {
 
 	case 3:
 		// Parse schema
-		schemaID, err := strconv.Atoi(string(ctx.Args[1]))
+		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			ctx.Err("invalid schema id: " + string(ctx.Args[1]))
-			return cmd
+			return Err("ERR invalid schema id: " + string(args[1]))
 		}
 		cmd.ID.Schema = int32(schemaID)
 
 		// Parse slice
-		sliceID, err := strconv.Atoi(string(ctx.Args[2]))
+		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
-			ctx.Err("invalid slice id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid slice id: " + string(args[2]))
 		}
 		cmd.ID.Slice = int32(sliceID)
 		return cmd
 	}
 }
 
-func (c *RaftBootstrap) Handle(ctx *Context) {
+func (c *RaftBootstrap) Handle(ctx *Context) Reply {
 	if c.raft == nil {
 		// Find Raft
 		c.raft = api.GetRaftService(c.ID)
 	}
 
 	if c.raft == nil {
-		ctx.Err("not exist")
-		return
+		return Err("ERR not exist")
 	}
 
 	if err := c.raft.Bootstrap(); err != nil {
-		ctx.Error(err)
-		return
+		return Error(err)
 	}
 
-	ctx.OK()
+	return Ok
 }
-
-func (c *RaftBootstrap) Apply(ctx *Context) {}

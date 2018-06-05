@@ -4,24 +4,35 @@ import (
 	"sync"
 
 	"github.com/genzai-io/sliced/proto/store"
+	"github.com/genzai-io/sliced/btrdb"
 )
+
+var (
+	TblTopic = &tblTopic{
+		Table: newTable(
+			"t",
+			func() Serializable { return &store.Topic{} },
+		),
+	}
+)
+
+type tblTopic struct {
+	*btrdb.Table
+
+	byId map[int64]*store.Topic
+	byName map[string]*store.Topic
+}
 
 //
 type Topic struct {
 	sync.RWMutex
 
-	key string // "t:{topicID}"
-	// Model
-	model *store.Topic
-
-	// Stats
-	mapped      int64
-	mappedWrite int64
+	model store.Topic
 }
 
 func newTopic(model *store.Topic) *Topic {
 	topic := &Topic{
-		model: model,
+		model: *model,
 	}
 
 	return topic

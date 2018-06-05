@@ -1,11 +1,13 @@
 package cmd
 
 import (
-	"encoding/json"
 	"strconv"
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/murlokswarm/errors"
+	"strings"
 )
 
 func init() { api.Register(api.RaftConfigName, &RaftConfig{}) }
@@ -16,29 +18,35 @@ type RaftConfig struct {
 	raft api.RaftService
 }
 
+func (c *RaftConfig) IsError() bool  { return false }
 func (c *RaftConfig) IsChange() bool { return false }
-func (c *RaftConfig) IsAsync() bool  { return true }
+func (c *RaftConfig) IsWorker() bool  { return true }
 
-func (c *RaftConfig) Marshal(buf []byte) []byte {
+//
+//
+//
+func (c *RaftConfig) Marshal(b []byte) []byte {
 	if c.ID.Schema < 0 {
-		buf = redcon.AppendArray(buf, 1)
-		buf = redcon.AppendBulkString(buf, api.RaftConfigName)
+		b = redcon.AppendArray(b, 1)
+		b = redcon.AppendBulkString(b, api.RaftConfigName)
 	} else {
-		buf = redcon.AppendArray(buf, 3)
-		buf = redcon.AppendBulkString(buf, api.RaftConfigName)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Schema)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Slice)
+		b = redcon.AppendArray(b, 3)
+		b = redcon.AppendBulkString(b, api.RaftConfigName)
+		b = redcon.AppendBulkInt32(b, c.ID.Schema)
+		b = redcon.AppendBulkInt32(b, c.ID.Slice)
 	}
-	return buf
+	return b
 }
 
-func (c *RaftConfig) Parse(ctx *Context) api.Command {
+//
+//
+//
+func (c *RaftConfig) Parse(args [][]byte) Command {
 	cmd := &RaftConfig{}
 
-	switch len(ctx.Args) {
+	switch len(args) {
 	default:
-		ctx.Err("expected 0 or 2 params")
-		return cmd
+		return Err("ERR expected 0 or 2 params")
 
 	case 1:
 		// Set schema and slice to -1 indicating we want the global store raft
@@ -47,58 +55,114 @@ func (c *RaftConfig) Parse(ctx *Context) api.Command {
 
 	case 3:
 		// Parse schema
-		schemaID, err := strconv.Atoi(string(ctx.Args[1]))
+		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			ctx.Err("invalid schema id: " + string(ctx.Args[1]))
-			return cmd
+			return Err("ERR invalid schema id: " + string(args[1]))
 		}
 		cmd.ID.Schema = int32(schemaID)
 
 		// Parse slice
-		sliceID, err := strconv.Atoi(string(ctx.Args[2]))
+		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
-			ctx.Err("invalid slice id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid slice id: " + string(args[2]))
 		}
 		cmd.ID.Slice = int32(sliceID)
 		return cmd
 	}
 }
 
-func (c *RaftConfig) Handle(ctx *Context) {
+//
+//
+//
+func (c *RaftConfig) Handle(ctx *Context) Reply {
 	if c.raft == nil {
 		// Find Raft
 		c.raft = api.GetRaftService(c.ID)
 	}
 
 	if c.raft == nil {
-		ctx.Err("not exist")
-		return
+		return Err("ERR not exist")
 	}
 
 	future, err := c.raft.Configuration()
 	if err != nil {
-		ctx.Error(err)
-		return
+		return Error(err)
 	}
 	if err = future.Error(); err != nil {
-		ctx.Error(err)
-		return
+		return Error(err)
 	}
 
-	var out []byte
-	out = redcon.AppendArray(out, len(future.Configuration().Servers)+1)
-	out = redcon.AppendInt(out, int64(future.Index()))
-	for _, key := range future.Configuration().Servers {
-		j, err := json.Marshal(key)
-		if err != nil {
-			out = redcon.AppendBulkString(out, ""+err.Error())
-		} else {
-			out = redcon.AppendBulk(out, j)
+	return &RaftConfigReply{
+		Index:   future.Index(),
+		Servers: future.Configuration().Servers,
+	}
+}
+
+//
+//
+//
+func (c *RaftConfig) Apply(ctx *Context) {}
+
+//
+//
+//
+type RaftConfigReply struct {
+	Index   uint64
+	Servers []raft.Server
+}
+
+//
+//
+//
+func (c *RaftConfigReply) IsError() bool { return false }
+
+//
+//
+//
+func (r *RaftConfigReply) MarshalReply(b []byte) []byte {
+	l := len(r.Servers)
+	b = redcon.AppendArray(b, l+1)
+	b = redcon.AppendInt(b, int64(r.Index))
+
+	if l > 0 {
+		for _, server := range r.Servers {
+			b = redcon.AppendArray(b, 3)
+			b = redcon.AppendBulkString(b, string(server.ID))
+			b = redcon.AppendBulkString(b, string(server.Address))
+			b = redcon.AppendBulkString(b, server.Suffrage.String())
 		}
 	}
 
-	ctx.Out = append(ctx.Out, out...)
+	return b
 }
 
-func (c *RaftConfig) Apply(ctx *Context) {}
+//
+//
+//
+func (r *RaftConfigReply) UnmarshalReply(packet []byte, args [][]byte) error {
+	if len(args) < 2 {
+		return errors.New("ERR invalid args")
+	}
+	var err error
+	r.Index, err = strconv.ParseUint(string(args[1]), 10, 64)
+	if err != nil {
+		return err
+	}
+	for i := 4; i < len(args); i += 3 {
+		var server raft.Server
+		server.ID = raft.ServerID(args[i-2])
+		server.Address = raft.ServerAddress(args[i-1])
+
+		switch strings.ToLower(string(args[i])) {
+		case "voter":
+			server.Suffrage = raft.Voter
+		case "nonvoter", "non-voter":
+			server.Suffrage = raft.Nonvoter
+		case "staging":
+			server.Suffrage = raft.Staging
+		default:
+			server.Suffrage = -1
+		}
+	}
+	return nil
+}

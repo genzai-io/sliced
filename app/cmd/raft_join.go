@@ -17,8 +17,9 @@ type RaftJoin struct {
 	raft api.RaftService
 }
 
+func (c *RaftJoin) IsError() bool  { return false }
 func (c *RaftJoin) IsChange() bool { return false }
-func (c *RaftJoin) IsAsync() bool  { return true }
+func (c *RaftJoin) IsWorker() bool  { return true }
 
 func (c *RaftJoin) Marshal(buf []byte) []byte {
 	if c.ID.Schema < 0 {
@@ -45,76 +46,69 @@ func (c *RaftJoin) Marshal(buf []byte) []byte {
 	return buf
 }
 
-func (c *RaftJoin) Parse(ctx *Context) api.Command {
+func (c *RaftJoin) Parse(args [][]byte) Command {
 	cmd := &RaftJoin{}
 
-	switch len(ctx.Args) {
+	switch len(args) {
 	default:
-		ctx.Err("invalid params")
-		return cmd
+		return Err("ERR invalid params")
 
 	case 2:
 		// Set schema and slice to -1 indicating we want the global store raft
 		cmd.ID = api.GlobalRaftID
-		cmd.Address = string(ctx.Args[1])
+		cmd.Address = string(args[1])
 		cmd.Voter = true
 		return cmd
 
 	case 3:
 		// Set schema and slice to -1 indicating we want the global store raft
 		cmd.ID = api.GlobalRaftID
-		cmd.Address = string(ctx.Args[1])
-		voter, err := api.ParseBool(ctx.Args[2])
+		cmd.Address = string(args[1])
+		voter, err := api.ParseBool(args[2])
 		if err != nil {
-			ctx.Err("invalid 'voter' param: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid 'voter' param: " + string(args[2]))
 		}
 		cmd.Voter = voter
 		return cmd
 
 	case 4:
 		// Parse schema
-		schemaID, err := strconv.Atoi(string(ctx.Args[1]))
+		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			ctx.Err("invalid schema id: " + string(ctx.Args[1]))
-			return cmd
+			return Err("ERR invalid schema id: " + string(args[1]))
 		}
 		cmd.ID.Schema = int32(schemaID)
 
 		// Parse slice
-		sliceID, err := strconv.Atoi(string(ctx.Args[2]))
+		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
-			ctx.Err("invalid slice id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid slice id: " + string(args[2]))
 		}
 		cmd.ID.Slice = int32(sliceID)
 
 		// Set address
-		cmd.Address = string(ctx.Args[3])
+		cmd.Address = string(args[3])
 		return cmd
 	case 5:
 		// Parse schema
-		schemaID, err := strconv.Atoi(string(ctx.Args[1]))
+		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			ctx.Err("invalid schema id: " + string(ctx.Args[1]))
-			return cmd
+			return Err("ERR invalid schema id: " + string(args[1]))
 		}
 		cmd.ID.Schema = int32(schemaID)
 
 		// Parse slice
-		sliceID, err := strconv.Atoi(string(ctx.Args[2]))
+		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
-			ctx.Err("invalid slice id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid slice id: " + string(args[2]))
 		}
 		cmd.ID.Slice = int32(sliceID)
 
 		// Set address
-		cmd.Address = string(ctx.Args[3])
-		voter, err := api.ParseBool(ctx.Args[2])
+		cmd.Address = string(args[3])
+		voter, err := api.ParseBool(args[2])
 		if err != nil {
-			ctx.Err("invalid 'voter' param: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid 'voter' param: " + string(args[2]))
 		}
 		cmd.Voter = voter
 		return cmd
@@ -122,7 +116,7 @@ func (c *RaftJoin) Parse(ctx *Context) api.Command {
 	return cmd
 }
 
-func (c *RaftJoin) Handle(ctx *Context) {
+func (c *RaftJoin) Handle(ctx *Context) Reply {
 	if c.raft == nil {
 		// Find Raft
 		c.raft = api.GetRaftService(c.ID)
@@ -130,16 +124,12 @@ func (c *RaftJoin) Handle(ctx *Context) {
 
 	// Do we have a matching Raft service
 	if c.raft == nil {
-		ctx.Err("not exist")
-		return
+		return Err("ERR not exist")
 	}
 
 	if err := c.raft.Join(c.Address, c.Voter); err != nil {
-		ctx.Error(err)
-		return
+		return Error(err)
 	}
 
-	ctx.OK()
+	return Ok
 }
-
-func (c *RaftJoin) Apply(ctx *Context) {}

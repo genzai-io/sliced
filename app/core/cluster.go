@@ -81,7 +81,7 @@ func (s *ClusterService) OnStart() error {
 
 	//s.transport, err = raft.NewTCPTransport(string(config.LocalID), addr, 3, time.Second*10, raftLogger)
 	//raft.NewDiscardSnapshotStore()
-	s.transport = NewTransport(-1, -1, "cluster-transport")
+	s.transport = newRaftTransport(-1, -1, "cluster-transport")
 
 	//err = s.transport.Start()
 	if err != nil {

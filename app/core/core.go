@@ -38,7 +38,7 @@ func NewService() *Service {
 func (b *Service) OnStart() error {
 	var err error
 	// Start schema service
-	b.Schema = newSchema()
+	b.Schema = newStore()
 	err = b.Schema.Start()
 	if err != nil {
 		return err

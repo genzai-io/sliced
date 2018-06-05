@@ -29,12 +29,10 @@ type Store struct {
 	raft      *RaftService
 	raftStore *LogStore
 
-
-	databases       map[int32]*Database
-	databasesByName map[string]*Database
+	databases       *databaseStore
 }
 
-func newSchema() *Store {
+func newStore() *Store {
 	s := &Store{}
 	s.BaseService = *service.NewBaseService(moved.Logger, "store", s)
 	return s
@@ -173,7 +171,7 @@ func (s *Store) corruptedNodes(tx *btrdb.Tx) {
 //				} else {
 //					// Set local node
 //					s.node = newNode(&model, true)
-//					s.node.syncModel()
+//					s.node.populateModel()
 //					s.updateLocalNode(tx)
 //					return nil
 //				}

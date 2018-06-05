@@ -56,7 +56,7 @@ var idProjector btrdb.Projector = func(val interface{}) interface{} {
 	return ""
 }
 
-var NameExtractor btrdb.Projector = func(val interface{}) interface{} {
+var nameProjector btrdb.Projector = func(val interface{}) interface{} {
 	switch v := val.(type) {
 	case HasName:
 		return v.GetName()

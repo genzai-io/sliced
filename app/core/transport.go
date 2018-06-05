@@ -54,7 +54,7 @@ type RaftTransport struct {
 	closed bool
 }
 
-func NewTransport(schemaID int32, sliceID int32, loggerName string) *RaftTransport {
+func newRaftTransport(schemaID int32, sliceID int32, loggerName string) *RaftTransport {
 	t := &RaftTransport{
 		schemaID: schemaID,
 		sliceID:  sliceID,
@@ -411,12 +411,12 @@ func (t *RaftTransport) InstallSnapshot(
 		}
 	}
 
-	// receive +OK
+	// receive +Ok
 	line, err := response(rd)
 	if err != nil {
 		return err
 	}
-	if string(line) != "OK" {
+	if string(line) != "Ok" {
 		return errInvalidResponse
 	}
 	var i int
@@ -431,12 +431,12 @@ func (t *RaftTransport) InstallSnapshot(
 				return err
 			}
 			cmd = cmd[:0] // set len to zero for reuse
-			// receive +OK
+			// receive +Ok
 			line, err := response(rd)
 			if err != nil {
 				return err
 			}
-			if string(line) != "OK" {
+			if string(line) != "Ok" {
 				return errInvalidResponse
 			}
 			i++
@@ -480,7 +480,7 @@ func (s *snapshotHandler) Parse(ctx *cmd.Context) cmd.Command {
 	conn := ctx.Conn
 	packet := ctx.Packet
 
-	switch ctx.Name {
+	switch string(ctx.Args[0]) {
 	default:
 		s.reader.CloseWithError(errInvalidRequest)
 		s.writer.CloseWithError(errInvalidRequest)
@@ -563,7 +563,7 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 //		if err := json.Unmarshal(arg, &rpc.Command); err != nil {
 //			return err
 //		}
-//		conn.WriteString("OK")
+//		conn.WriteString("Ok")
 //		if err := conn.Flush(); err != nil {
 //			return err
 //		}
@@ -586,7 +586,7 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 //						if _, err := wr.Write(cmd.Args[1]); err != nil {
 //							return err
 //						}
-//						conn.WriteString("OK")
+//						conn.WriteString("Ok")
 //						if err := conn.Flush(); err != nil {
 //							return err
 //						}

@@ -53,6 +53,10 @@ type RaftService struct {
 	schemaID int32
 	sliceID  int32
 
+	// The raft log store.
+	// This keeps track of current Term as well as all log entries since the last snapshot.
+	// This is optionally persistent.
+	// Snapshots will happen from the supplied snapshot store
 	store *LogStore
 
 	// A map of voting members
@@ -153,7 +157,7 @@ func (rs *RaftService) OnStart() error {
 	}
 
 	// Start transport
-	rs.transport = NewTransport(rs.schemaID, rs.sliceID, rs.getTransportLoggerName())
+	rs.transport = newRaftTransport(rs.schemaID, rs.sliceID, rs.getTransportLoggerName())
 	err = rs.transport.Start()
 	if err != nil {
 		rs.Logger.Error().Err(err).Msg("raft transport start failed")
@@ -286,7 +290,6 @@ func (rs *RaftService) nodeStaging(node *Node) {
 func (rs *RaftService) nodeOnline(node *Node) {
 
 }
-
 
 // Only for RaftTransport RAFTAPPEND
 func (rs *RaftService) Append(o []byte, args [][]byte) ([]byte, error) {

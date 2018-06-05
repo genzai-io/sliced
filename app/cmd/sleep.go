@@ -11,12 +11,11 @@ func init() {
 	api.Register("SLEEP", &Sleep{})
 }
 
-type Sleep struct {
-	Command
-}
+type Sleep struct{}
 
+func (c *Sleep) IsError() bool  { return false }
 func (c *Sleep) IsChange() bool { return false }
-func (c *Sleep) IsAsync() bool  { return true }
+func (c *Sleep) IsWorker() bool  { return true }
 
 func (c *Sleep) Marshal(buf []byte) []byte {
 	buf = redcon.AppendArray(buf, 1)
@@ -24,13 +23,11 @@ func (c *Sleep) Marshal(buf []byte) []byte {
 	return buf
 }
 
-func (c *Sleep) Parse(ctx *Context) api.Command {
+func (c *Sleep) Parse(args [][]byte) Command {
 	return &Sleep{}
 }
 
-func (c *Sleep) Handle(ctx *Context) {
+func (c *Sleep) Handle(ctx *Context) Reply {
 	time.Sleep(time.Second)
-	ctx.OK()
+	return Ok
 }
-
-func (c *Sleep) Apply(ctx *Context) {}

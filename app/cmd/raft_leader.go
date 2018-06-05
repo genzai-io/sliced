@@ -14,8 +14,9 @@ type RaftLeader struct {
 	raft api.RaftService
 }
 
+func (c *RaftLeader) IsError() bool  { return false }
 func (c *RaftLeader) IsChange() bool { return false }
-func (c *RaftLeader) IsAsync() bool  { return true }
+func (c *RaftLeader) IsWorker() bool  { return true }
 
 func (c *RaftLeader) Marshal(buf []byte) []byte {
 	if c.ID.Schema < 0 {
@@ -30,13 +31,12 @@ func (c *RaftLeader) Marshal(buf []byte) []byte {
 	return buf
 }
 
-func (c *RaftLeader) Parse(ctx *Context) api.Command {
+func (c *RaftLeader) Parse(args [][]byte) Command {
 	cmd := &RaftLeader{}
 
-	switch len(ctx.Args) {
+	switch len(args) {
 	default:
-		ctx.Err("expected 0 or 2 params")
-		return cmd
+		return Err("ERR expected 0 or 2 params")
 
 	case 1:
 		// Set schema and slice to -1 indicating we want the global store raft
@@ -45,36 +45,31 @@ func (c *RaftLeader) Parse(ctx *Context) api.Command {
 
 	case 3:
 		// Parse schema
-		schemaID, err := strconv.Atoi(string(ctx.Args[1]))
+		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			ctx.Err("invalid schema id: " + string(ctx.Args[1]))
-			return cmd
+			return Err("ERR invalid schema id: " + string(args[1]))
 		}
 		cmd.ID.Schema = int32(schemaID)
 
 		// Parse slice
-		sliceID, err := strconv.Atoi(string(ctx.Args[2]))
+		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
-			ctx.Err("invalid slice id: " + string(ctx.Args[2]))
-			return cmd
+			return Err("ERR invalid slice id: " + string(args[2]))
 		}
 		cmd.ID.Slice = int32(sliceID)
 		return cmd
 	}
 }
 
-func (c *RaftLeader) Handle(ctx *Context) {
+func (c *RaftLeader) Handle(ctx *Context) Reply {
 	if c.raft == nil {
 		// Find Raft
 		c.raft = api.GetRaftService(c.ID)
 	}
 
 	if c.raft == nil {
-		ctx.Err("not exist")
-		return
+		return Err("ERR not exist")
 	}
 
-	ctx.AppendString(string(c.raft.Leader()))
+	return String(c.raft.Leader())
 }
-
-func (c *RaftLeader) Apply(ctx *Context) {}

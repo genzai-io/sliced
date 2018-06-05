@@ -10,21 +10,24 @@ import (
 	"github.com/genzai-io/sliced/proto/store"
 )
 
-func createStoreDB(t *testing.T) *btrdb.DB {
+func createStoreDB(t *testing.T) *databaseStore {
 	// Create a memory DB
 	db, err := btrdb.Open("store.db")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = dbBuildStoreSchema(db); err != nil {
-		t.Fatal(err)
+
+	d := newDatabases(db)
+	if err := d.Start(); err != nil {
+		t.Fatal(d)
 	}
-	return db
+
+	return d
 }
 
 func TestStore_SelectDatabases(t *testing.T) {
 	db := createStoreDB(t)
-	databases, err := TblDatabase.Select(db, TblDatabase.Pk)
+	databases, err := db.selectAll(db.tblDatabases.Pk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +42,7 @@ func TestStore_SelectDatabases(t *testing.T) {
 
 func TestStore_SelectDatabasesByName(t *testing.T) {
 	db := createStoreDB(t)
-	databases, err := TblDatabase.Select(db, TblDatabase.Names)
+	databases, err := db.selectAll(db.ByNames)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,9 +58,9 @@ func TestStore_SelectDatabasesByName(t *testing.T) {
 func TestStore_UpdateDatabases(t *testing.T) {
 	db := createStoreDB(t)
 
-	err := db.Update(func(tx *btrdb.Tx) error {
+	err := db.db.Update(func(tx *btrdb.Tx) error {
 		// Get it from the database
-		value, err := TblDatabase.Get(tx, 2)
+		value, err := db.tblDatabases.Get(tx, 2)
 		if err != nil {
 			return err
 		}
@@ -72,7 +75,7 @@ func TestStore_UpdateDatabases(t *testing.T) {
 		database.Name = "orders"
 
 		// Update it in the database
-		_, _, err = TblDatabase.Update(tx, database)
+		_, _, err = db.tblDatabases.Update(tx, database)
 		return err
 	})
 
@@ -80,17 +83,17 @@ func TestStore_UpdateDatabases(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	databases, err := TblDatabase.Select(db, TblDatabase.Pk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, database := range databases {
-		data, err := json.Marshal(database)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println(string(data))
-	}
+	//databases, err := db.Select(db, TblDatabase.Pk)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//for _, database := range databases {
+	//	data, err := json.Marshal(database)
+	//	if err != nil {
+	//		t.Fatal(err)
+	//	}
+	//	fmt.Println(string(data))
+	//}
 }
 
 func TestStore_CreateDatabase(t *testing.T) {
@@ -99,7 +102,7 @@ func TestStore_CreateDatabase(t *testing.T) {
 	num := 20
 	created := make([]*store.Database, 0)
 	for i := 0; i < num; i++ {
-		database, err := TblDatabase.Insert(db, fmt.Sprintf("app-%d", i+1))
+		database, err := db.Insert(fmt.Sprintf("app-%d", i+1))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -136,14 +139,14 @@ func TestStore_CreateDatabase(t *testing.T) {
 func TestStore_CreateDatabaseDuplicateName(t *testing.T) {
 	db := createStoreDB(t)
 
-	database, err := TblDatabase.Insert(db, "app")
+	database, err := db.Insert("app")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = database
 	//fmt.Println(database)
 
-	database2, err := TblDatabase.Insert(db, "app")
+	database2, err := db.Insert("app")
 	if err == nil {
 		t.Fatal(errors.New("no error... expected ErrExists"))
 	}
@@ -158,13 +161,13 @@ func TestStore_CreateDatabaseDuplicateName(t *testing.T) {
 func TestStore_CreateDatabaseIDSequence(t *testing.T) {
 	db := createStoreDB(t)
 
-	database, err := TblDatabase.Insert(db, "app")
+	database, err := db.Insert("app")
 	if err != nil {
 		t.Fatal(err)
 	}
 	//fmt.Println(database)
 
-	database2, err := TblDatabase.Insert(db, "app-2")
+	database2, err := db.Insert("app-2")
 	if err != nil {
 		t.Fatal(err)
 	}

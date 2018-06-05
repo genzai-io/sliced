@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,18 +24,22 @@ type CmdServer struct {
 
 	action evio.Action
 
-	totalConns    metrics.Counter // counter for total connections
-	totalCommands metrics.Counter // counter for total commands
-	totalBytesIn  metrics.Counter
-	totalBytesOut metrics.Counter
+	statsConns       metrics.Counter // counter for total connections
+	statsCommands    metrics.Counter // counter for total commands
+	statsIngress     metrics.Counter
+	statsEgress      metrics.Counter
+	statsActiveConns metrics.Counter
+	statsWakes       metrics.Counter
 }
 
 func NewCmdServer() *CmdServer {
 	e := &CmdServer{
-		totalConns:    metrics.NewCounter(),
-		totalCommands: metrics.NewCounter(),
-		totalBytesIn:  metrics.NewCounter(),
-		totalBytesOut: metrics.NewCounter(),
+		statsConns:       metrics.NewCounter(),
+		statsCommands:    metrics.NewCounter(),
+		statsIngress:     metrics.NewCounter(),
+		statsEgress:      metrics.NewCounter(),
+		statsActiveConns: metrics.NewCounter(),
+		statsWakes:       metrics.NewCounter(),
 	}
 	e.BaseService = *service.NewBaseService(moved.Logger, "srv", e)
 	return e
@@ -86,6 +89,9 @@ func (e *CmdServer) serve() {
 		// Set the context
 		c.SetContext(co)
 
+		e.statsActiveConns.Inc(1)
+		e.statsConns.Inc(1)
+
 		return
 	}
 
@@ -98,8 +104,16 @@ func (e *CmdServer) serve() {
 	}
 
 	events.Closed = func(co evio.Conn, err error) (action evio.Action) {
+		e.statsActiveConns.Dec(1)
+
 		// Notify connection.
-		co.Context().(*Conn).closed()
+		ctx := co.Context()
+		if ctx != nil {
+			if conn, ok := ctx.(*Conn); ok {
+				conn.closed()
+				co.SetContext(nil)
+			}
+		}
 		return
 	}
 
@@ -120,6 +134,8 @@ func (e *CmdServer) serve() {
 
 		// Are we woke?
 		if in == nil {
+			e.statsWakes.Inc(1)
+
 			if ctx := c.woke(); ctx != nil {
 				return ctx.Out, c.action
 			} else {
@@ -129,7 +145,7 @@ func (e *CmdServer) serve() {
 			}
 		}
 
-		//s.bytesIn.Inc(int64(len(in)))
+		e.statsIngress.Inc(int64(len(in)))
 
 		// Does the connection have some news to tell the event loop?
 		if c.action != evio.None {
@@ -137,7 +153,7 @@ func (e *CmdServer) serve() {
 			return
 		}
 
-		atomic.AddUint64(&c.statsTotalUpstream, uint64(len(in)))
+		atomic.AddUint64(&c.statsIngress, uint64(len(in)))
 
 		// A single buffer is reused at the eventloop level.
 		// If we get partial commands then we need to copy to
@@ -180,35 +196,38 @@ func (e *CmdServer) serve() {
 				cmdCount++
 
 				//ctx.Name = *(*string)(unsafe.Pointer(&ctx.Args[0]))
-				ctx.Name = strings.ToUpper(string(ctx.Args[0]))
-
-				if numArgs > 1 {
-					ctx.Key = string(ctx.Args[1])
-					//ctx.Extract = *(*string)(unsafe.Pointer(&ctx.Args[1]))
-				} else {
-					ctx.Key = ""
-				}
-
-				before := len(ctx.Out)
+				//ctx.Name = strings.ToUpper(string(ctx.Args[0]))
+				//
+				//if numArgs > 1 {
+				//	ctx.Key = string(ctx.Args[1])
+				//	//ctx.Extract = *(*string)(unsafe.Pointer(&ctx.Args[1]))
+				//} else {
+				//	ctx.Key = ""
+				//}
 
 				// Parse Command
 				command = c.handler.Parse(ctx)
 
 				if command == nil {
-					command = cmd.ERR(fmt.Sprintf("command '%s' not found", ctx.Name))
+					command = cmd.Err(fmt.Sprintf("ERR command '%s' not found", ctx.Args[0]))
 				}
 
 				// Early return?
-				if len(ctx.Out) == before {
-					c.Invoke(ctx, command)
+				reply := c.Invoke(ctx, command)
+				if reply != nil {
+					before := len(ctx.Out)
+					ctx.Out = reply.MarshalReply(ctx.Out)
+					if len(ctx.Out) == before {
+						ctx.Out = redcon.AppendError(ctx.Out, "ERR not implemented")
+					}
 				}
 
-				if command.IsChange() {
-					ctx.AddChange(command, ctx.Packet)
-				} else {
-					// Commit if necessary
-					ctx.Commit()
-				}
+				//if command.IsChange() {
+				//	ctx.AddChange(command, ctx.Packet)
+				//} else {
+				//	// Commit if necessary
+				//	ctx.Commit()
+				//}
 
 				ctx.Index++
 			}
@@ -217,7 +236,9 @@ func (e *CmdServer) serve() {
 		// Copy partial Cmd data if any.
 		c.end(data)
 
-		atomic.AddUint64(&c.statsTotalDownstream, uint64(len(out)))
+		e.statsCommands.Inc(int64(ctx.Index + 1))
+		e.statsEgress.Inc(int64(len(out)))
+		atomic.AddUint64(&c.statsEgress, uint64(len(out)))
 
 		if action == evio.Close {
 			return

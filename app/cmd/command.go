@@ -12,12 +12,22 @@ var (
 // Aliases
 type Context = api.Context
 type Command = api.Command
+type Reply = api.CommandReply
+type Err = api.Err
+type String = api.String
+type Bytes = api.Bytes
+
+func Error(err error) Err {
+	return Err("ERR " + err.Error())
+}
+
+var Ok Reply = api.Ok{}
 
 //
 //
 //
-func RAW(b []byte) api.Command {
-	return api.RawCmd(b)
+func RAW(b []byte) Command {
+	return Bytes(b)
 }
 
 //
