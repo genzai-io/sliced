@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"syscall"
 )
 
 // Action is an action that occurs after the completion of an event.
@@ -46,6 +47,12 @@ type Server struct {
 	Addrs []net.Addr
 	// NumLoops is the number of loops that the server is using.
 	NumLoops int
+
+	Shutdown        func() error
+	WaitForShutdown func() error
+
+	Dial         func(addr string) error
+	DialSockAddr func(sa syscall.Sockaddr) error
 }
 
 // Conn is an evio connection.
@@ -62,6 +69,13 @@ type Conn interface {
 	RemoteAddr() net.Addr
 	// Wakes the connection up if necessary.
 	Wake() error
+}
+
+type ConnAction interface {
+	//
+	Action() Action
+
+	SetAction(action Action)
 }
 
 // LoadBalance sets the load balancing method.
@@ -105,7 +119,7 @@ type Events struct {
 	// Closed fires when a connection has closed.
 	// The err parameter is the last known connection error.
 	Closed func(c Conn, err error) (action Action)
-	// Detached fires when a connection has been previously detached.
+	// OnDetach fires when a connection has been previously detached.
 	// Once detached it's up to the receiver of this event to manage the
 	// state of the connection. The Closed event will not be called for
 	// this connection.

@@ -8,33 +8,37 @@ import (
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
+	"github.com/movemedical/server-agent/common/redcon"
 )
 
+var raftJoin = &cmd.RaftJoin{}
+
 func TestRaftJoin_Registry(t *testing.T) {
-	_, ok := api.Commands[api.RaftJoinName]
+	_, ok := api.Commands[raftJoin.Name()]
 	if !ok {
-		panic(api.RaftJoinName + " not registered")
+		panic(raftJoin.Name() + " not registered")
 	}
-	_, ok = api.Commands[strings.ToUpper(api.RaftJoinName)]
+	_, ok = api.Commands[strings.ToUpper(raftJoin.Name())]
 	if !ok {
-		panic(strings.ToUpper(api.RaftJoinName) + " not registered")
+		panic(strings.ToUpper(raftJoin.Name()) + " not registered")
 	}
-	_, ok = api.Commands[strings.ToLower(api.RaftJoinName)]
+	_, ok = api.Commands[strings.ToLower(raftJoin.Name())]
 	if !ok {
-		panic(strings.ToLower(api.RaftJoinName) + " not registered")
+		panic(strings.ToLower(raftJoin.Name()) + " not registered")
 	}
 }
 
 func TestRaftJoin_Marshall(t *testing.T) {
-	cmd, ok := api.Commands[api.RaftJoinName]
+	c, ok := api.Commands[raftJoin.Name()]
 	if !ok {
-		panic(api.RaftJoinName + " not registered")
+		panic(raftJoin.Name() + " not registered")
 	}
-	if cmd == nil {
-		t.Fatal(errors.New(api.RaftJoinName + " registered nil command"))
+	if c == nil {
+		t.Fatal(errors.New(raftJoin.Name() + " registered nil command"))
 	}
 
-	for _, cmd := range []*cmd.RaftJoin{
+
+	for _, cc := range []*cmd.RaftJoin{
 		{
 			ID:      api.GlobalRaftID,
 			Address: "127.0.0.1:9001",
@@ -47,58 +51,60 @@ func TestRaftJoin_Marshall(t *testing.T) {
 		},
 		{
 			ID: api.RaftID{
-				Schema: 0,
-				Slice:  0,
+				DatabaseID: 0,
+				SliceID:    0,
 			},
 			Address: "127.0.0.1:9001",
 			Voter:   false,
 		},
 		{
 			ID: api.RaftID{
-				Schema: 1,
-				Slice:  1,
+				DatabaseID: 1,
+				SliceID:    1,
 			},
 			Address: "127.0.0.1:9001",
 			Voter:   false,
 		},
 		{
 			ID: api.RaftID{
-				Schema: 1,
-				Slice:  1,
+				DatabaseID: 1,
+				SliceID:    1,
 			},
 			Address: "127.0.0.1:9001",
 			Voter:   true,
 		},
 		{
 			ID: api.RaftID{
-				Schema: 3,
-				Slice:  5,
+				DatabaseID: 3,
+				SliceID:    5,
 			},
 			Address: "127.0.0.1:9001",
 			Voter:   true,
 		},
 	} {
-		testMarshalRaftJoin(t, cmd)
+		testMarshalRaftJoin(t, cc)
 	}
 }
 
-func testMarshalRaftJoin(t *testing.T, cmd *cmd.RaftJoin) {
-	buf := cmd.Marshal(nil)
-	ctx := createContext(t, buf)
+func testMarshalRaftJoin(t *testing.T, c *cmd.RaftJoin) {
+	args, _, err := redcon.ParseCommand(c.Marshal(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	cmd2 := cmd.Parse(ctx)
+	cmd2 := c.Parse(args)
 
-	if !compareRaftJoin(cmd, cmd2.(*cmd.RaftJoin)) {
-		fmt.Println(fmt.Sprintf("%s\n!=\n%s", cmd, cmd2))
+	if !compareRaftJoin(c, cmd2.(*cmd.RaftJoin)) {
+		fmt.Println(fmt.Sprintf("%s\n!=\n%s", c, cmd2))
 		t.Fatal(errors.New("compare failed"))
 	}
 }
 
 func compareRaftJoin(r1 *cmd.RaftJoin, r2 *cmd.RaftJoin) bool {
-	if r1.ID.Schema != r2.ID.Schema {
+	if r1.ID.DatabaseID != r2.ID.DatabaseID {
 		return false
 	}
-	if r1.ID.Slice != r2.ID.Slice {
+	if r1.ID.SliceID != r2.ID.SliceID {
 		return false
 	}
 	if r1.Address != r2.Address {

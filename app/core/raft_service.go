@@ -292,13 +292,13 @@ func (rs *RaftService) nodeOnline(node *Node) {
 }
 
 // Only for RaftTransport RAFTAPPEND
-func (rs *RaftService) Append(o []byte, args [][]byte) ([]byte, error) {
-	return rs.transport.handleAppendEntries(o, args)
+func (rs *RaftService) Append(payload []byte) api.CommandReply {
+	return rs.transport.handleAppendEntries(payload)
 }
 
 // Only for RaftTransport RAFTVOTE
-func (rs *RaftService) Vote(o []byte, args [][]byte) ([]byte, error) {
-	return rs.transport.handleRequestVote(o, args)
+func (rs *RaftService) Vote(payload []byte) api.CommandReply {
+	return rs.transport.handleRequestVote(payload)
 }
 
 // Only for RaftTransport RAFTINSTALL
@@ -458,4 +458,3 @@ func (rs *RaftService) Leave(nodeID string) error {
 	rs.Logger.Info().Str("node", nodeID).Str("addr", addr).Msg("node left successfully")
 	return nil
 }
-

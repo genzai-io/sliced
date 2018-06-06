@@ -5,7 +5,7 @@ import (
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/common/raft"
 
-	cmd "github.com/genzai-io/sliced/app/cmd"
+	"github.com/genzai-io/sliced/app/cmd"
 )
 
 // IRaftStore represents a raft store that conforms to
@@ -52,15 +52,13 @@ func (s *ClusterService) ShrinkLog() error {
 }
 
 // Only for RaftTransport RAFTAPPEND
-func (s *ClusterService) Append(o []byte, args [][]byte) ([]byte, error) {
-	return s.transport.handleAppendEntries(o, args)
-	//return nil, nil
+func (s *ClusterService) Append(payload []byte) api.CommandReply {
+	return s.transport.handleAppendEntries(payload)
 }
 
 // Only for RaftTransport RAFTVOTE
-func (s *ClusterService) Vote(o []byte, args [][]byte) ([]byte, error) {
-	return s.transport.handleRequestVote(o, args)
-	//return nil, nil
+func (s *ClusterService) Vote(payload []byte) api.CommandReply {
+	return s.transport.handleRequestVote(payload)
 }
 
 // Only for RaftTransport RAFTINSTALL

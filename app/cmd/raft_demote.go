@@ -7,7 +7,7 @@ import (
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-func init() { api.Register(api.RaftDemote, &RaftDemote{}) }
+func init() { api.Register(&RaftDemote{}) }
 
 // Demotes a Voting member to a Non-Voting member.
 type RaftDemote struct {
@@ -17,20 +17,21 @@ type RaftDemote struct {
 	raft api.RaftService
 }
 
+func (c *RaftDemote) Name() string   { return "DEMOTE" }
+func (c *RaftDemote) Help() string   { return "" }
 func (c *RaftDemote) IsError() bool  { return false }
-func (c *RaftDemote) IsChange() bool { return false }
-func (c *RaftDemote) IsWorker() bool  { return true }
+func (c *RaftDemote) IsWorker() bool { return true }
 
 func (c *RaftDemote) Marshal(buf []byte) []byte {
-	if c.ID.Schema < 0 {
+	if c.ID.DatabaseID < 0 {
 		buf = redcon.AppendArray(buf, 2)
-		buf = redcon.AppendBulkString(buf, api.RaftDemote)
+		buf = redcon.AppendBulkString(buf, c.Name())
 		buf = redcon.AppendBulkString(buf, c.Address)
 	} else {
 		buf = redcon.AppendArray(buf, 4)
-		buf = redcon.AppendBulkString(buf, api.RaftDemote)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Schema)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Slice)
+		buf = redcon.AppendBulkString(buf, c.Name())
+		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
 		buf = redcon.AppendBulkString(buf, c.Address)
 	}
 	return buf
@@ -55,14 +56,14 @@ func (c *RaftDemote) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[2]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Slice = int32(sliceID)
+		cmd.ID.SliceID = int32(sliceID)
 
 		// Set address
 		cmd.Address = string(args[3])

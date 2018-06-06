@@ -1,19 +1,23 @@
 package core
 
 import (
-	"github.com/garyburd/redigo/redis"
 	"time"
+
 	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/common/redigo/redis"
 )
 
+// Inter-node communication / forwarding
 type NodeTransport interface {
-	Send(command api.Command)
+	Send(command api.Command) []byte
 }
 
 type localNodeTransport struct {
 }
 
-func (t *localNodeTransport) Send(command api.Command) {
+func (t *localNodeTransport) Send(command api.Command) []byte {
+	command.Handle(nil)
+	return nil
 }
 
 type remoteNodeTransport struct {
@@ -49,10 +53,12 @@ func (t *remoteNodeTransport) Get() redis.Conn {
 	return t.pool.Get()
 }
 
-func (t *remoteNodeTransport) Send(command api.Command) {
+func (t *remoteNodeTransport) Send(command api.Command) []byte {
 	conn := t.pool.Get()
 	if conn == nil {
-		return
+		return nil
 	}
 
+	//redcon.ParseCommand()
+	return nil
 }

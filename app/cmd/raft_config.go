@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func init() { api.Register(api.RaftConfigName, &RaftConfig{}) }
+func init() { api.Register(&RaftConfig{}) }
 
 // Reconfigures a Raft Service to be a single node Leader.
 type RaftConfig struct {
@@ -18,22 +18,23 @@ type RaftConfig struct {
 	raft api.RaftService
 }
 
+func (c *RaftConfig) Name() string   { return "RAFTCONFIG" }
+func (c *RaftConfig) Help() string   { return "" }
 func (c *RaftConfig) IsError() bool  { return false }
-func (c *RaftConfig) IsChange() bool { return false }
-func (c *RaftConfig) IsWorker() bool  { return true }
+func (c *RaftConfig) IsWorker() bool { return true }
 
 //
 //
 //
 func (c *RaftConfig) Marshal(b []byte) []byte {
-	if c.ID.Schema < 0 {
+	if c.ID.DatabaseID < 0 {
 		b = redcon.AppendArray(b, 1)
-		b = redcon.AppendBulkString(b, api.RaftConfigName)
+		b = redcon.AppendBulkString(b, c.Name())
 	} else {
 		b = redcon.AppendArray(b, 3)
-		b = redcon.AppendBulkString(b, api.RaftConfigName)
-		b = redcon.AppendBulkInt32(b, c.ID.Schema)
-		b = redcon.AppendBulkInt32(b, c.ID.Slice)
+		b = redcon.AppendBulkString(b, c.Name())
+		b = redcon.AppendBulkInt32(b, c.ID.DatabaseID)
+		b = redcon.AppendBulkInt32(b, c.ID.SliceID)
 	}
 	return b
 }
@@ -59,14 +60,14 @@ func (c *RaftConfig) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[1]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Slice = int32(sliceID)
+		cmd.ID.SliceID = int32(sliceID)
 		return cmd
 	}
 }
@@ -97,11 +98,6 @@ func (c *RaftConfig) Handle(ctx *Context) Reply {
 		Servers: future.Configuration().Servers,
 	}
 }
-
-//
-//
-//
-func (c *RaftConfig) Apply(ctx *Context) {}
 
 //
 //

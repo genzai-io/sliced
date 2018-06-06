@@ -7,7 +7,7 @@ import (
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-func init() { api.Register(api.RaftBootstrap, &RaftBootstrap{}) }
+func init() { api.Register(&RaftBootstrap{}) }
 
 // Reconfigures a Raft Service to be a single node Leader.
 type RaftBootstrap struct {
@@ -15,19 +15,20 @@ type RaftBootstrap struct {
 	raft api.RaftService
 }
 
-func (c *RaftBootstrap) IsError() bool { return false }
-func (c *RaftBootstrap) IsChange() bool { return false }
-func (c *RaftBootstrap) IsWorker() bool  { return true }
+func (c *RaftBootstrap) Name() string   { return "BOOTSTRAP" }
+func (c *RaftBootstrap) Help() string   { return "" }
+func (c *RaftBootstrap) IsError() bool  { return false }
+func (c *RaftBootstrap) IsWorker() bool { return true }
 
 func (c *RaftBootstrap) Marshal(buf []byte) []byte {
-	if c.ID.Schema < 0 {
+	if c.ID.DatabaseID < 0 {
 		buf = redcon.AppendArray(buf, 1)
-		buf = redcon.AppendBulkString(buf, api.RaftBootstrap)
+		buf = redcon.AppendBulkString(buf, c.Name())
 	} else {
 		buf = redcon.AppendArray(buf, 3)
-		buf = redcon.AppendBulkString(buf, api.RaftBootstrap)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Schema)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Slice)
+		buf = redcon.AppendBulkString(buf, c.Name())
+		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
 	}
 	return buf
 }
@@ -50,14 +51,14 @@ func (c *RaftBootstrap) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[1]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Slice = int32(sliceID)
+		cmd.ID.SliceID = int32(sliceID)
 		return cmd
 	}
 }

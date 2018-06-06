@@ -14,9 +14,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"errors"
 
 	"github.com/kavu/go_reuseport"
 	"github.com/genzai-io/sliced/common/evio/internal"
+	"math/rand"
 )
 
 type conn struct {
@@ -41,8 +43,97 @@ func (c *conn) SetContext(ctx interface{}) { c.ctx = ctx }
 func (c *conn) AddrIndex() int             { return c.addrIndex }
 func (c *conn) LocalAddr() net.Addr        { return c.localAddr }
 func (c *conn) RemoteAddr() net.Addr       { return c.remoteAddr }
+func (c *conn) Action() Action             { return c.action }
+func (c *conn) SetAction(action Action)    { c.action = action }
 func (c *conn) Wake() error {
 	return c.loop.poll.Wake(c.fd)
+}
+
+func (s *server) Dial(addr string) error {
+	sa, err := Resolve(addr)
+	if err != nil {
+		return err
+	}
+	return s.DialSockAddr(sa)
+}
+
+func (s *server) DialSockAddr(sa syscall.Sockaddr) error {
+	var err error
+	var fd int
+	switch sa.(type) {
+	case *syscall.SockaddrUnix:
+		fd, err = syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	case *syscall.SockaddrInet4:
+		fd, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	case *syscall.SockaddrInet6:
+		fd, err = syscall.Socket(syscall.AF_INET6, syscall.SOCK_STREAM, 0)
+	}
+	if err != nil {
+		return err
+	}
+	err = syscall.Connect(fd, sa)
+	if err != nil && err != syscall.EINPROGRESS {
+		syscall.Close(fd)
+		return err
+	}
+	// Set socket to Non-Blocking
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		syscall.Close(fd)
+		return err
+	}
+
+	// Pick a loop
+	var l *loop = nil
+	var lidx = 0
+
+	if len(s.loops) > 1 {
+		switch s.balance {
+		case LeastConnections:
+			// Pick the loop with the fewest connections
+			for i, lp := range s.loops {
+				if l == nil {
+					l = lp
+					lidx = i
+				} else if atomic.LoadInt32(&l.count) < atomic.LoadInt32(&lp.count) {
+					l = lp
+					lidx = i
+				}
+			}
+		case RoundRobin:
+			lidx = int(atomic.LoadUintptr(&s.accepted)) % len(s.loops)
+			l = s.loops[lidx]
+
+		case Random:
+			lidx = rand.Int() % len(s.loops)
+			l = s.loops[lidx]
+
+		default:
+			l = s.loops[int(atomic.LoadUintptr(&s.accepted))%len(s.loops)]
+		}
+	} else if len(s.loops) == 1 {
+		l = s.loops[0]
+	}
+
+	if l == nil {
+		syscall.Close(fd)
+		return errors.New("no loops")
+	}
+
+	// Increment dialed
+	atomic.AddUintptr(&s.dialed, 1)
+	// Increment connect count
+	atomic.AddInt32(&l.count, 1)
+
+	// Init conn
+	c := &conn{fd: fd, sa: sa, lnidx: lidx, loop: l}
+
+	// Put conn into loop map
+	l.fdconns[c.fd] = c
+
+	// Add to the loop's poll to start polling for events
+	l.poll.AddReadWrite(c.fd)
+
+	return nil
 }
 
 type server struct {
@@ -53,6 +144,7 @@ type server struct {
 	cond     *sync.Cond         // shutdown signaler
 	balance  LoadBalance        // load balancing method
 	accepted uintptr            // accept counter
+	dialed   uintptr            // dialed counter
 	tch      chan time.Duration // ticker channel
 
 	//ticktm   time.Time      // next tick time
@@ -64,6 +156,16 @@ type loop struct {
 	packet  []byte         // read packet buffer
 	fdconns map[int]*conn  // loop connections fd -> conn
 	count   int32          // connection count
+}
+
+func (s *server) SignalShutdown() error {
+	s.signalShutdown()
+	return nil
+}
+
+func (s *server) WaitForShutdown() error {
+	s.waitForShutdown()
+	return nil
 }
 
 // waitForShutdown waits for a signal to shutdown
@@ -106,6 +208,10 @@ func serve(events Events, listeners []*listener) error {
 		for i, ln := range listeners {
 			svr.Addrs[i] = ln.lnaddr
 		}
+		svr.Dial = s.Dial
+		svr.DialSockAddr = s.DialSockAddr
+		svr.Shutdown = s.SignalShutdown
+		svr.WaitForShutdown = s.WaitForShutdown
 		action := s.events.Serving(svr)
 		switch action {
 		case None:

@@ -1,4 +1,6 @@
-// Provides a raft transport using the Redis RESP protocol.
+// Provides a raft transport using the Redis RESP protocol allowing the
+// same Event Loops and command processing to be used for as many Raft
+// clusters as desired.
 package core
 
 import (
@@ -16,10 +18,11 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/api"
-	cmd "github.com/genzai-io/sliced/app/cmd"
+	"github.com/genzai-io/sliced/app/cmd"
 	"github.com/genzai-io/sliced/common/raft"
 	"github.com/genzai-io/sliced/common/redcon"
 	"github.com/genzai-io/sliced/common/service"
+	"github.com/genzai-io/sliced/common/evio"
 )
 
 const (
@@ -52,6 +55,8 @@ type RaftTransport struct {
 	mu     sync.Mutex
 	pools  map[string]*redis.Pool
 	closed bool
+
+	installing *snapshotHandler
 }
 
 func newRaftTransport(schemaID int32, sliceID int32, loggerName string) *RaftTransport {
@@ -171,14 +176,14 @@ func (t *RaftTransport) AppendEntriesPipeline(id raft.ServerID, target raft.Serv
 // tight binary format.
 func encodeAppendEntriesRequest(args *raft.AppendEntriesRequest) []byte {
 	n := make([]byte, 8)       // used to store uint64s
-	b := make([]byte, 42, 256) // encoded message goes here
+	b := make([]byte, 41, 256) // encoded message goes here
 
-	binary.LittleEndian.PutUint16(b[0:2], uint16(args.ProtocolVersion))
-	binary.LittleEndian.PutUint64(b[2:10], args.Term)
-	binary.LittleEndian.PutUint64(b[10:18], args.PrevLogEntry)
-	binary.LittleEndian.PutUint64(b[18:26], args.PrevLogTerm)
-	binary.LittleEndian.PutUint64(b[26:34], args.LeaderCommitIndex)
-	binary.LittleEndian.PutUint64(b[34:42], uint64(len(args.Leader)))
+	b[0] = byte(args.ProtocolVersion)
+	binary.LittleEndian.PutUint64(b[1:9], args.Term)
+	binary.LittleEndian.PutUint64(b[9:17], args.PrevLogEntry)
+	binary.LittleEndian.PutUint64(b[17:25], args.PrevLogTerm)
+	binary.LittleEndian.PutUint64(b[25:33], args.LeaderCommitIndex)
+	binary.LittleEndian.PutUint64(b[33:41], uint64(len(args.Leader)))
 	b = append(b, args.Leader...)
 	binary.LittleEndian.PutUint64(n, uint64(len(args.Entries)))
 	b = append(b, n...)
@@ -198,16 +203,16 @@ func encodeAppendEntriesRequest(args *raft.AppendEntriesRequest) []byte {
 // decodeAppendEntriesRequest decodes AppendEntriesRequest data.
 // Returns true when successful
 func decodeAppendEntriesRequest(b []byte, args *raft.AppendEntriesRequest) bool {
-	if len(b) < 42 {
+	if len(b) < 41 {
 		return false
 	}
-	args.ProtocolVersion = raft.ProtocolVersion(binary.LittleEndian.Uint16(b[0:2]))
-	args.Term = binary.LittleEndian.Uint64(b[2:10])
-	args.PrevLogEntry = binary.LittleEndian.Uint64(b[10:18])
-	args.PrevLogTerm = binary.LittleEndian.Uint64(b[18:26])
-	args.LeaderCommitIndex = binary.LittleEndian.Uint64(b[26:34])
-	args.Leader = make([]byte, int(binary.LittleEndian.Uint64(b[34:42])))
-	b = b[42:]
+	args.ProtocolVersion = raft.ProtocolVersion(b[0])
+	args.Term = binary.LittleEndian.Uint64(b[1:9])
+	args.PrevLogEntry = binary.LittleEndian.Uint64(b[9:17])
+	args.PrevLogTerm = binary.LittleEndian.Uint64(b[17:25])
+	args.LeaderCommitIndex = binary.LittleEndian.Uint64(b[25:33])
+	args.Leader = make([]byte, int(binary.LittleEndian.Uint64(b[33:41])))
+	b = b[41:]
 	if len(b) < len(args.Leader) {
 		return false
 	}
@@ -238,32 +243,32 @@ func decodeAppendEntriesRequest(b []byte, args *raft.AppendEntriesRequest) bool 
 }
 
 func encodeAppendEntriesResponse(args *raft.AppendEntriesResponse) []byte {
-	b := make([]byte, 20)
-	binary.LittleEndian.PutUint16(b[0:2], uint16(args.ProtocolVersion))
-	binary.LittleEndian.PutUint64(b[2:10], args.Term)
-	binary.LittleEndian.PutUint64(b[10:18], args.LastLog)
+	b := make([]byte, 19)
+	b[0] = byte(args.ProtocolVersion)
+	binary.LittleEndian.PutUint64(b[1:9], args.Term)
+	binary.LittleEndian.PutUint64(b[9:17], args.LastLog)
 	if args.Success {
-		b[18] = 1
+		b[17] = 1
 	}
 	if args.NoRetryBackoff {
-		b[19] = 1
+		b[18] = 1
 	}
 	return b
 }
 
 func decodeAppendEntriesResponse(b []byte, args *raft.AppendEntriesResponse) bool {
-	if len(b) != 20 {
+	if len(b) != 19 {
 		return false
 	}
-	args.ProtocolVersion = raft.ProtocolVersion(binary.LittleEndian.Uint16(b[0:2]))
-	args.Term = binary.LittleEndian.Uint64(b[2:10])
-	args.LastLog = binary.LittleEndian.Uint64(b[10:18])
-	if b[18] == 1 {
+	args.ProtocolVersion = raft.ProtocolVersion(b[0])
+	args.Term = binary.LittleEndian.Uint64(b[1:9])
+	args.LastLog = binary.LittleEndian.Uint64(b[9:17])
+	if b[17] == 1 {
 		args.Success = true
 	} else {
 		args.Success = false
 	}
-	if b[19] == 1 {
+	if b[18] == 1 {
 		args.NoRetryBackoff = true
 	} else {
 		args.NoRetryBackoff = false
@@ -296,29 +301,76 @@ func (t *RaftTransport) AppendEntries(id raft.ServerID, target raft.ServerAddres
 	}
 }
 
-func (t *RaftTransport) handleAppendEntries(o []byte, args [][]byte) ([]byte, error) {
-	if len(args) != 2 {
-		return redcon.AppendError(o, ""+errInvalidNumberOfArgs.Error()), errInvalidNumberOfArgs
-	}
+func (t *RaftTransport) handleAppendEntries(payload []byte) api.CommandReply {
 	var rpc raft.RPC
 	var aer raft.AppendEntriesRequest
-	if !decodeAppendEntriesRequest(args[1], &aer) {
-		return redcon.AppendError(o, "invalid request"), errInvalidRequest
+	if !decodeAppendEntriesRequest(payload, &aer) {
+		return api.Err("ERR invalid request")
 	}
 	rpc.Command = &aer
 	respChan := make(chan raft.RPCResponse)
 	rpc.RespChan = respChan
 	t.consumer <- rpc
 	rresp := <-respChan
-	if rresp.Error != nil {
-		return redcon.AppendError(o, ""+rresp.Error.Error()), rresp.Error
+	err := rresp.Error
+	if err != nil {
+		return api.Err("ERR " + err.Error())
 	}
 	resp, ok := rresp.Response.(*raft.AppendEntriesResponse)
 	if !ok {
-		return redcon.AppendError(o, "invalid response"), errInvalidResponse
+		return api.Err("ERR invalid response")
 	}
 	data := encodeAppendEntriesResponse(resp)
-	return redcon.AppendBulk(o, data), nil
+	return api.Bytes(data)
+}
+
+func encodeVoteRequest(args *raft.RequestVoteRequest) []byte {
+	b := make([]byte, 25+len(args.Candidate))
+	b[0] = byte(args.ProtocolVersion)
+	binary.LittleEndian.PutUint64(b[1:9], args.Term)
+	binary.LittleEndian.PutUint64(b[9:17], args.LastLogIndex)
+	binary.LittleEndian.PutUint64(b[17:25], args.LastLogTerm)
+	if len(args.Candidate) > 0 {
+		copy(b[25:], args.Candidate)
+	}
+	return b
+}
+
+func decodeVoteRequest(b []byte, args *raft.RequestVoteRequest) bool {
+	if len(b) < 25 {
+		return false
+	}
+	args.ProtocolVersion = raft.ProtocolVersion(b[1])
+	args.Term = binary.LittleEndian.Uint64(b[1:9])
+	args.LastLogIndex = binary.LittleEndian.Uint64(b[9:17])
+	args.LastLogTerm = binary.LittleEndian.Uint64(b[17:25])
+
+	if len(b) > 25 {
+		args.Candidate = append(args.Candidate, b[25:]...)
+	}
+	return true
+}
+
+func encodeVoteResponse(args *raft.RequestVoteResponse) []byte {
+	b := make([]byte, 11)
+	binary.LittleEndian.PutUint16(b[0:2], uint16(args.ProtocolVersion))
+	binary.LittleEndian.PutUint64(b[2:10], args.Term)
+	if args.Granted {
+		b[10] = 1
+	} else {
+		b[10] = 0
+	}
+	return b
+}
+
+func decodeVoteResponse(b []byte, args *raft.RequestVoteResponse) bool {
+	if len(b) != 11 {
+		return false
+	}
+	args.ProtocolVersion = raft.ProtocolVersion(binary.LittleEndian.Uint16(b[0:2]))
+	args.Term = binary.LittleEndian.Uint64(b[2:10])
+	args.Granted = b[11] > 0
+	return true
 }
 
 // Vote implements the Transport interface.
@@ -329,7 +381,7 @@ func (t *RaftTransport) RequestVote(id raft.ServerID, target raft.ServerAddress,
 	}
 	defer conn.Close()
 
-	data, _ := json.Marshal(args)
+	data := encodeVoteRequest(args)
 	//reply, _, err := Do(string(target), nil, api.RaftVote, data)
 	reply, err := conn.Do(api.RaftVoteName, data)
 	//val, _, err := Do(string(target), nil, []byte("RAFTVOTE"), data)
@@ -343,9 +395,14 @@ func (t *RaftTransport) RequestVote(id raft.ServerID, target raft.ServerAddress,
 		return errors.New("invalid response")
 	case redis.Error:
 		return val
+	case string:
+		if !decodeVoteResponse([]byte(val), resp) {
+			return errInvalidRequest
+		}
+		return nil
 	case []byte:
-		if err := json.Unmarshal(val, resp); err != nil {
-			return err
+		if !decodeVoteResponse(val, resp) {
+			return errInvalidRequest
 		}
 		return nil
 	}
@@ -353,13 +410,11 @@ func (t *RaftTransport) RequestVote(id raft.ServerID, target raft.ServerAddress,
 	return nil
 }
 
-func (t *RaftTransport) handleRequestVote(o []byte, args [][]byte) ([]byte, error) {
-	if len(args) != 2 {
-		return redcon.AppendError(o, ""+errInvalidNumberOfArgs.Error()), errInvalidNumberOfArgs
-	}
+func (t *RaftTransport) handleRequestVote(payload []byte) api.CommandReply {
 	var aer raft.RequestVoteRequest
-	if err := json.Unmarshal(args[1], &aer); err != nil {
-		return redcon.AppendError(o, ""+err.Error()), err
+	if !decodeVoteRequest([]byte(payload), &aer) {
+		//if err := json.Unmarshal(vote, &aer); err != nil {
+		return api.Err("ERR invalid message")
 	}
 
 	respCh := make(chan raft.RPCResponse, 1)
@@ -370,15 +425,17 @@ func (t *RaftTransport) handleRequestVote(o []byte, args [][]byte) ([]byte, erro
 
 	t.consumer <- rpc
 	rresp := <-respCh
-	if rresp.Error != nil {
-		return redcon.AppendError(o, ""+rresp.Error.Error()), rresp.Error
+	err := rresp.Error
+	if err != nil {
+		return api.Err(err.Error())
 	}
 	resp, ok := rresp.Response.(*raft.RequestVoteResponse)
 	if !ok {
-		return redcon.AppendError(o, "invalid response"), errors.New("invalid response")
+		return api.Err("ERR invalid response")
 	}
-	data, _ := json.Marshal(resp)
-	return redcon.AppendBulk(o, data), nil
+	data := encodeVoteResponse(resp)
+	//data, _ := json.Marshal(resp)
+	return api.Bytes(data)
 }
 
 // InstallSnapshot implements the Transport interface.
@@ -464,50 +521,48 @@ func (t *RaftTransport) InstallSnapshot(
 }
 
 type snapshotHandler struct {
+	ctx        *api.Context
 	transport  *RaftTransport
 	time       time.Time
 	reader     *io.PipeReader
 	writer     *io.PipeWriter
-	handler    api.IHandler
 	downstream uint64
 }
 
-func (s *snapshotHandler) Commit(ctx *cmd.Context) {
-}
-
-func (s *snapshotHandler) Parse(ctx *cmd.Context) cmd.Command {
-	args := ctx.Args
-	conn := ctx.Conn
-	packet := ctx.Packet
-
-	switch string(ctx.Args[0]) {
+func (s *snapshotHandler) Parse(packet []byte, args [][]byte) api.Command {
+	if len(args) == 0 {
+		return cmd.Err(fmt.Sprintf("ERR install snapshot mode only supports '%s' and '%s'", api.RaftChunkName, api.RaftDoneName))
+	}
+	switch string(args[0]) {
 	default:
 		s.reader.CloseWithError(errInvalidRequest)
 		s.writer.CloseWithError(errInvalidRequest)
-		conn.Close()
-		return cmd.ERR(fmt.Sprintf("install snapshot mode only supports '%s' and '%s'", api.RaftChunkName, api.RaftDoneName))
+		s.ctx.Action = evio.Close
+		return cmd.Err(fmt.Sprintf("ERR install snapshot mode only supports '%s' and '%s'", api.RaftChunkName, api.RaftDoneName))
+
 	case api.RaftChunkName:
 		s.downstream += uint64(len(packet))
 
 		if len(args) != 2 {
 			s.reader.CloseWithError(errInvalidNumberOfArgs)
 			s.writer.CloseWithError(errInvalidNumberOfArgs)
-			conn.Close()
-			return cmd.ERR("invalid number of args")
+			s.ctx.Action = evio.Close
+			return cmd.Err("ERR invalid number of args")
 		}
 		if _, err := s.writer.Write(args[1]); err != nil {
 			s.reader.CloseWithError(err)
 			s.writer.CloseWithError(err)
-			conn.Close()
-			return cmd.ERR(fmt.Sprintf("writer error '%s'", err.Error()))
+			s.ctx.Action = evio.Close
+			return cmd.Err(fmt.Sprintf("ERR writer error '%s'", err.Error()))
 		}
-		return cmd.OK()
+		return api.Ok{}
+
 	case api.RaftDoneName:
 		s.writer.Close()
 		s.reader.Close()
-		return cmd.OK()
+		s.ctx.Action = evio.Close
+		return api.Ok{}
 	}
-	return nil
 }
 
 func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.Command {
@@ -543,17 +598,20 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 		return cmd.ERROR(err)
 	}
 
-	handler := &snapshotHandler{
+	t.installing = &snapshotHandler{
+		ctx:       ctx,
 		transport: t,
 		time:      time.Now(),
 		reader:    rd,
 		writer:    wr,
 	}
-	handler.handler = ctx.Conn.SetHandler(handler)
+
+	ctx.Kind = api.ConnInstall
+	ctx.Parse = t.installing.Parse
 
 	out := redcon.AppendOK(nil)
 	out = redcon.AppendBulk(out, data)
-	return cmd.RAW(out)
+	return cmd.Bytes(out)
 }
 
 //func (t *RESPTransport) handleInstallSnapshot(conn redcon.DetachedConn, arg []byte) {
@@ -627,7 +685,7 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 //	}
 //}
 
-//func (t *RESPTransport) handle(conn redcon.Conn, cmd redcon.Command) {
+//func (t *RESPTransport) handle(conn redcon.CommandConn, cmd redcon.Command) {
 //	var err error
 //	var res []byte
 //	switch strings.ToLower(string(cmd.Args[0])) {
@@ -923,7 +981,7 @@ func newNetPipeline(trans *RaftTransport, conn redis.Conn) *netPipeline {
 
 // decodeResponse is used to decode an RPC response and reports whether
 // the connection can be reused.
-//func decodeResponse(conn redis.Conn, resp interface{}) (bool, error) {
+//func decodeResponse(conn redis.CommandConn, resp interface{}) (bool, error) {
 //	// Decode the error if any
 //	var rpcError string
 //	if err := conn.dec.Decode(&rpcError); err != nil {

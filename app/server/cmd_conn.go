@@ -1,7 +1,6 @@
 package server
 
 import (
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -9,237 +8,398 @@ import (
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
 	"github.com/genzai-io/sliced/common/evio"
+	"fmt"
+	"github.com/genzai-io/sliced/common/redcon"
+	"unsafe"
+	"io"
 )
 
 var maxCommandBacklog = 10000
 
+var emptyCtx = &api.Context{}
+
+func ErrWake(err error) error {
+	return fmt.Errorf("wake: %s", err.Error())
+}
+
 type Conn struct {
-	evc    evio.Conn
-	kind   api.ConnKind
-	action evio.Action // event loop status
+	api.Context
+
 	done   bool        // flag to signal it's done
 
-	mu   sync.Mutex
-	lock uintptr
-	in   []byte
-
-	// Backlog
-	backlog []cmd.Command
-	active  cmd.Command
-
-	// Handler to use to process and commit commands
-	handler api.IHandler
 	// Durability setting
 	durability api.Durability
-
-	// Context it's currently associated with
-	ctx *api.Context
-
 	// Current raft context
 	// This is used for the RaftTransport to support multiple Raft clusters
 	// over the same port
 	raft api.RaftService
 
+	reason error
+
+	// Buffers
+	in  []byte
+	out []byte
+
+	// Locks
+	loopMutex sync.Mutex
+
+	// Counter to manage race conditions with the event loop and workers
+	wakeProcessed uint64
+	wakeRequired  uint64
+
+	// Backlog
+	multi   bool
+	backlog []cmd.Command // commands that must wait until current worker finishes
+	worker  cmd.Command
+
+	onDetached func(rwc io.ReadWriteCloser)
+	onData     func(in []byte) (out []byte, action evio.Action)
+
 	// Stats
 	statsTotalCommands uint64
 	statsIngress       uint64
 	statsEgress        uint64
+	statsWakes         uint64
 
+	workerStart        time.Time
 	statsAsyncCommands uint64
-	statsAsyncOps      uint64
-	statsAsyncDur      time.Duration
+	statsWorkers       uint64
+	statsWorkerDur     time.Duration
 }
 
-// Spinlock Lock
-func (l *Conn) Lock() {
-	for !atomic.CompareAndSwapUintptr(&l.lock, 0, 1) {
-		runtime.Gosched()
+func (c *Conn) Detach() error {
+	c.Lock()
+	c.Action = evio.Detach
+	c.Unlock()
+	c.Ev.Wake()
+	return nil
+}
+
+func (c *Conn) OnDetach(rwc io.ReadWriteCloser) {
+	if rwc != nil {
+		rwc.Close()
 	}
 }
 
-// Spinlock Unlock
-func (l *Conn) Unlock() {
-	atomic.StoreUintptr(&l.lock, 0)
+func (c *Conn) Close() error {
+	c.Lock()
+	c.Action = evio.Close
+	conn := c.Ev
+	c.Unlock()
+
+	if conn != nil {
+		return conn.Wake()
+	}
+	return nil
 }
 
-func (c *Conn) Kind() api.ConnKind {
-	c.mu.Lock()
-	k := c.kind
-	c.mu.Unlock()
+func (c *Conn) OnClosed() {
+	c.Lock()
+	c.done = true
+	c.Action = evio.Close
+	c.Ev = nil
+	c.Unlock()
+}
+
+func (c *Conn) Conn() evio.Conn {
+	return c.Ev
+}
+
+func (c *Conn) Stats() {
+	c.Lock()
+	c.Unlock()
+}
+
+func (c *Conn) GetKind() api.ConnKind {
+	c.Lock()
+	k := c.Kind
+	c.Unlock()
 	return k
 }
 
 func (c *Conn) SetKind(kind api.ConnKind) {
-	c.mu.Lock()
-	c.kind = kind
-	c.mu.Unlock()
-}
-
-func (c *Conn) Invoke(ctx *api.Context, cmd api.Command) api.CommandReply {
-	c.mu.Lock()
-	if c.action != evio.None {
-		c.mu.Unlock()
-		return api.Err("ERR closed")
-	}
-
-	if c.active != nil {
-		if len(c.backlog) > maxCommandBacklog {
-			c.mu.Unlock()
-			return api.Err("ERR backlog filled")
-		}
-
-		c.backlog = append(c.backlog, cmd)
-		c.mu.Unlock()
-		return nil
-	} else {
-		if cmd.IsWorker() {
-			atomic.AddUint64(&c.statsAsyncCommands, 1)
-			// Set background context
-			c.ctx = &api.Context{}
-			c.dispatch(cmd)
-			c.mu.Unlock()
-			return nil
-		} else {
-			reply := cmd.Handle(ctx)
-			c.mu.Unlock()
-			return reply
-		}
-	}
+	c.Lock()
+	c.Kind = kind
+	c.Unlock()
 }
 
 func (c *Conn) Raft() api.RaftService {
-	//c.mu.Lock()
-	//r := c.raft
-	//c.mu.Unlock()
-	return c.raft
+	c.Lock()
+	r := c.raft
+	c.Unlock()
+	return r
 }
 
 func (c *Conn) SetRaft(raft api.RaftService) {
-	c.mu.Lock()
+	c.Lock()
 	c.raft = raft
-	c.mu.Unlock()
-}
-
-func (c *Conn) Close() error {
-	c.mu.Lock()
-	c.action = evio.Close
-	c.mu.Unlock()
-	return nil
+	c.Unlock()
 }
 
 func (c *Conn) Durability() api.Durability {
 	return c.durability
 }
 
-func (c *Conn) Handler() api.IHandler {
-	return c.handler
-}
-
-func (c *Conn) SetHandler(handler api.IHandler) api.IHandler {
-	prev := c.handler
-	c.handler = handler
-	return prev
-}
-
-func (c *Conn) dispatch(cmd cmd.Command) {
-	c.active = cmd
-	Workers.Dispatch(c)
-}
-
+// Invoked from the Worker
+// This must be careful to synchronize access to the CommandConn's properties
+// since this is called from a different goroutine from the Event Loop.
+// However, since there can only be a single "active" worker for a connection
+// at a time, there is no need to worry about synchronizing multiple Run() calls.
 func (c *Conn) Run() {
+	c.Lock()
+	worker := c.worker
+	c.Unlock()
+
 	// Was the job already canceled?
-	c.mu.Lock()
-	if c.active == nil {
-		c.mu.Unlock()
+	if worker == nil {
 		return
 	}
 
-	if c.ctx == nil {
-		c.ctx = &api.Context{}
-	}
-
-	l := len(c.ctx.Out)
 	// Run job.
-	c.active.Handle(c.ctx)
-
-	if len(c.ctx.Out) == l {
-		c.ctx.Err("not implemented")
+	reply := worker.Handle(nil)
+	if reply == nil {
+		reply = api.Err("ERR not implemented")
 	}
 
-	c.active = nil
-	c.mu.Unlock()
+	dur := time.Now().Sub(c.workerStart)
+
+	// Use spin-lock
+	c.Lock()
+
+	// Add stats
+	c.statsWorkerDur += dur
+
+	// Append to write buffer
+	before := len(c.out)
+	c.out = reply.MarshalReply(c.out)
+	if len(c.out) == before {
+		c.out = redcon.AppendError(c.out, "ERR not implemented")
+	}
+
+	// Increment wake tx
+	c.wakeRequired++
+
+	if len(c.backlog) > 0 {
+		atomic.AddUint64(&c.statsWakes, 1)
+
+		next := c.backlog[0]
+		// Check if the next command is also a Worker
+		if next.IsWorker() {
+			worker = next
+			// Start next worker
+			c.worker = next
+			// Pop it off the backlog
+			c.backlog = c.backlog[1:]
+		} else {
+			worker = nil
+			c.worker = nil
+			// Should we process in the worker?
+		}
+	} else {
+		worker = nil
+		c.worker = nil
+	}
+	c.Unlock()
+
+	// Dispatch the next worker if needed.
+	// We could maybe use the same worker instance?
+	if worker != nil {
+		c.dispatch()
+	}
 
 	// Notify event loop of our write.
-	c.wake()
+	if err := c.Ev.Wake(); err != nil {
+		c.Lock()
+		c.reason = ErrWake(err)
+		c.Action = evio.Close
+		c.Unlock()
+	}
 }
 
-// Inform the event loop to close this connection.
-func (c *Conn) close() {
-	c.action = evio.Close
-	c.wake()
+func (c *Conn) dispatch() {
+	atomic.AddUint64(&c.statsWorkers, 1)
+	Workers.Dispatch(c)
 }
 
-// Called when the event loop has closed this connection.
-func (c *Conn) closed() {
-	c.done = true
-}
-
-// Asks the event loop to schedule a write event for this connection.
-func (c *Conn) wake() {
-	c.evc.Wake()
-}
-
-// Invoked on the event loop thread.
-func (c *Conn) woke() *api.Context {
-	// Set output buffer
-	c.mu.Lock()
-	if c.active != nil {
-		c.mu.Unlock()
+func (c *Conn) process(out []byte, backlog []api.Command) []byte {
+	if c.multi {
 		return nil
 	}
 
-	ctx := c.ctx
-	c.ctx = nil
-	if ctx == nil {
-		ctx = &api.Context{}
-	}
+	l := len(backlog)
 
-	index := -1
-LOOP:
-	for i, cmd := range c.backlog {
-		if cmd.IsWorker() {
-			index = i
-			break LOOP
-		} else {
-			c.Invoke(ctx, cmd)
+	var (
+		wrkidx  = -1
+		i       int
+		command api.Command
+	)
+	if l > 0 {
+	LOOP:
+		for i, command = range backlog {
+			if command.IsWorker() {
+				wrkidx = i
+				break LOOP
+			} else {
+				before := len(out)
+				// Run job.
+				reply := command.Handle(nil)
+				if reply != nil {
+					out = reply.MarshalReply(out)
+				}
+				if len(out) == before {
+					out = redcon.AppendError(out, "ERR not implemented")
+				}
+			}
 		}
 	}
 
-	if index > -1 {
-		dispatch := c.backlog[index]
-		c.backlog = c.backlog[index+1:]
-		c.dispatch(dispatch)
-	} else {
+	c.Lock()
+	if wrkidx > -1 {
+		c.worker = backlog[wrkidx]
+		if wrkidx+1 < l {
+			c.backlog = backlog[wrkidx+1:]
+		} else {
+			// Current worker was the last command in the backlog.
+			// We can fully clear the backlog.
+			c.backlog = nil
+		}
+
+		c.dispatch()
+	}
+	c.Unlock()
+
+	return out
+}
+
+func (c *Conn) handle(packet []byte, args [][]byte) api.Command {
+	name := *(*string)(unsafe.Pointer(&args[0]))
+
+	// Find command
+	command := api.Commands[name]
+	if command != nil {
+		command = command.Parse(args)
+	}
+	return command
+}
+
+// This is called from the Event Loop goroutine / thread
+func (c *Conn) OnData(in []byte) (o []byte, action evio.Action) {
+	// Loop lock
+	c.loopMutex.Lock()
+	defer c.loopMutex.Unlock()
+
+	// Is this a "Wake"?
+	if len(in) == 0 {
+		c.Lock()
+		// Flush write buffer
+		o = c.out
+		c.out = nil
+		backlog := c.backlog
 		c.backlog = nil
+		c.Unlock()
+
+		o = c.process(o, backlog)
+
+		return
 	}
 
-	c.mu.Unlock()
-	return ctx
-}
+	// Ingress
+	atomic.AddUint64(&c.statsIngress, uint64(len(in)))
 
-// Begin accepts a new packet and returns a working sequence of
-// unprocessed bytes.
-func (c *Conn) begin(packet []byte) (data []byte) {
-	data = packet
+	action = c.Action
+	switch action {
+	case evio.Close, evio.Shutdown:
+		return
+	case evio.Detach:
+	}
+
+	// Were there any leftovers from the previous event?
+	data := in
 	if len(c.in) > 0 {
-		c.in = append(c.in, data...)
-		data = c.in
+		data = append(c.in, data...)
+		c.in = nil
 	}
-	return data
-}
 
-// End shift the stream to match the unprocessed data.
-func (c *Conn) end(data []byte) {
+	var
+	(
+		packet   []byte
+		complete bool
+		args     [][]byte
+		err      error
+		command  api.Command
+		commands []api.Command
+	)
+
+LOOP:
+	for c.Action == evio.None {
+		// Read next command.
+		packet, complete, args, _, data, err = redcon.ParseNextCommand(data, args[:0])
+		_ = packet
+
+		if err != nil {
+			action = evio.Close
+			o = redcon.AppendError(o, err.Error())
+			break LOOP
+		}
+
+		// Do we need more data?
+		if !complete {
+			// Exit loop.
+			break LOOP
+		}
+
+		if len(args) == 0 {
+			break LOOP
+		}
+
+		if c.Parse == nil {
+			command = c.handle(packet, args)
+		} else {
+			command = c.Parse(packet, args)
+		}
+
+		if command == nil {
+			command = cmd.Err(fmt.Sprintf("ERR command '%s' not found", args[0]))
+		}
+
+		commands = append(commands, command)
+	}
+
+	if len(commands) > 0 {
+		// Add stats
+		atomic.AddUint64(&c.statsTotalCommands, uint64(len(commands)))
+
+		var backlog []api.Command = nil
+
+		c.Lock()
+		o = c.out
+		c.out = nil
+		action = c.Action
+		worker := c.worker
+
+		if len(c.backlog) > 0 {
+			backlog = append(c.backlog, commands...)
+		} else {
+			backlog = commands
+		}
+
+		c.backlog = backlog
+		c.Unlock()
+
+		if worker == nil && len(backlog) > 0 {
+			o = c.process(o, backlog)
+		}
+	}
+
+	// Egress stats
+	atomic.AddUint64(&c.statsEgress, uint64(len(o)))
+
+	if action != evio.None {
+		action = c.Action
+		return o, action
+	}
+
+	// Are there any leftovers (partial commands)?
 	if len(data) > 0 {
 		if len(data) != len(c.in) {
 			c.in = append(c.in[:0], data...)
@@ -248,8 +408,7 @@ func (c *Conn) end(data []byte) {
 		c.in = c.in[:0]
 	}
 
-	//if len(c.out) > 0 {
-	//	c.outb = c.out
-	//	c.out = nil
-	//}
+	action = c.Action
+
+	return o, action
 }

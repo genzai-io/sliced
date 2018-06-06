@@ -7,7 +7,7 @@ import (
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-func init() { api.Register(api.RaftJoinName, &RaftJoin{}) }
+func init() { api.Register(&RaftJoin{}) }
 
 type RaftJoin struct {
 	ID      api.RaftID
@@ -17,14 +17,15 @@ type RaftJoin struct {
 	raft api.RaftService
 }
 
+func (c *RaftJoin) Name() string   { return "JOIN" }
+func (c *RaftJoin) Help() string   { return "" }
 func (c *RaftJoin) IsError() bool  { return false }
-func (c *RaftJoin) IsChange() bool { return false }
-func (c *RaftJoin) IsWorker() bool  { return true }
+func (c *RaftJoin) IsWorker() bool { return true }
 
 func (c *RaftJoin) Marshal(buf []byte) []byte {
-	if c.ID.Schema < 0 {
+	if c.ID.DatabaseID < 0 {
 		buf = redcon.AppendArray(buf, 3)
-		buf = redcon.AppendBulk(buf, api.RaftJoin)
+		buf = redcon.AppendBulkString(buf, c.Name())
 		buf = redcon.AppendBulkString(buf, c.Address)
 		if c.Voter {
 			buf = redcon.AppendBulkInt(buf, 1)
@@ -33,9 +34,9 @@ func (c *RaftJoin) Marshal(buf []byte) []byte {
 		}
 	} else {
 		buf = redcon.AppendArray(buf, 5)
-		buf = redcon.AppendBulk(buf, api.RaftJoin)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Schema)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Slice)
+		buf = redcon.AppendBulkString(buf, c.Name())
+		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
 		buf = redcon.AppendBulkString(buf, c.Address)
 		if c.Voter {
 			buf = redcon.AppendBulkInt(buf, 1)
@@ -77,14 +78,14 @@ func (c *RaftJoin) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[1]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Slice = int32(sliceID)
+		cmd.ID.SliceID = int32(sliceID)
 
 		// Set address
 		cmd.Address = string(args[3])
@@ -95,14 +96,14 @@ func (c *RaftJoin) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[1]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Slice = int32(sliceID)
+		cmd.ID.SliceID = int32(sliceID)
 
 		// Set address
 		cmd.Address = string(args[3])

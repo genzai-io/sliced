@@ -141,7 +141,7 @@ type Node struct {
 	local  bool
 
 	// Transport to use to send RESP requests if not local
-	transport *remoteNodeTransport
+	transport NodeTransport
 }
 
 func newNode(model *store.Node, local bool) *Node {
@@ -181,7 +181,6 @@ func (n *Node) populateModel() {
 
 	// Send update to leader
 }
-
 
 type NodeGroup struct {
 	model store.NodeGroup

@@ -1,6 +1,6 @@
 package api
 
-// Cluster wide registry of schemas and raft services.
+// Cluster wide registry of schemas and Raft services.
 type Store interface {
 	Raft() RaftService
 

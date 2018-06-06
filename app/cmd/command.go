@@ -17,6 +17,8 @@ type Err = api.Err
 type String = api.String
 type Bytes = api.Bytes
 
+var Register = api.Register
+
 func Error(err error) Err {
 	return Err("ERR " + err.Error())
 }

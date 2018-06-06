@@ -53,9 +53,9 @@ type RaftService interface {
 
 	State() raft.RaftState
 
-	Append(o []byte, args [][]byte) ([]byte, error)
+	Append(payload []byte) CommandReply
 
-	Vote(o []byte, args [][]byte) ([]byte, error)
+	Vote(payload []byte) CommandReply
 
 	Install(ctx *Context, arg []byte) Command
 
@@ -73,7 +73,7 @@ type RaftService interface {
 type RaftFSM raft.FSM
 
 func GetRaftService(id RaftID) RaftService {
-	if id.Schema < 0 {
+	if id.DatabaseID < 0 {
 		return Cluster.Raft()
 	} else {
 		return nil

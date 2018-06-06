@@ -7,7 +7,7 @@ import (
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-func init() { api.Register(api.RaftRemoveName, &RaftRemove{}) }
+func init() { api.Register(&RaftRemove{}) }
 
 // Demotes a Voting member to a Non-Voting member.
 type RaftRemove struct {
@@ -17,20 +17,21 @@ type RaftRemove struct {
 	raft api.RaftService
 }
 
+func (c *RaftRemove) Name() string   { return "REMOVE" }
+func (c *RaftRemove) Help() string   { return "" }
 func (c *RaftRemove) IsError() bool  { return false }
-func (c *RaftRemove) IsChange() bool { return false }
-func (c *RaftRemove) IsWorker() bool  { return true }
+func (c *RaftRemove) IsWorker() bool { return true }
 
 func (c *RaftRemove) Marshal(buf []byte) []byte {
-	if c.ID.Schema < 0 {
+	if c.ID.DatabaseID < 0 {
 		buf = redcon.AppendArray(buf, 2)
-		buf = redcon.AppendBulkString(buf, api.RaftRemoveName)
+		buf = redcon.AppendBulkString(buf, c.Name())
 		buf = redcon.AppendBulkString(buf, c.Address)
 	} else {
 		buf = redcon.AppendArray(buf, 4)
-		buf = redcon.AppendBulkString(buf, api.RaftRemoveName)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Schema)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Slice)
+		buf = redcon.AppendBulkString(buf, c.Name())
+		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
 		buf = redcon.AppendBulkString(buf, c.Address)
 	}
 	return buf
@@ -55,14 +56,14 @@ func (c *RaftRemove) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[2]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Schema = int32(sliceID)
+		cmd.ID.DatabaseID = int32(sliceID)
 
 		// Set address
 		cmd.Address = string(args[3])

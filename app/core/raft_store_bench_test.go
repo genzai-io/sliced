@@ -32,7 +32,7 @@ func BenchmarkFastLogStore_GetLog(b *testing.B) {
 }
 
 func BenchmarkFastLogStore_StoreLog(b *testing.B) {
-	store := testFastLogStore(b, false)
+	store := testFastLogStore(b, true)
 	defer store.Close()
 	defer os.Remove(store.path)
 

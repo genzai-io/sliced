@@ -17,9 +17,10 @@ type CommandReply interface {
 //
 type Ok struct{}
 
+func (c Ok) Name() string   { return "OK" }
+func (c Ok) Help() string   { return "" }
 func (c Ok) IsError() bool  { return false }
-func (c Ok) IsChange() bool { return false }
-func (c Ok) IsWorker() bool  { return true }
+func (c Ok) IsWorker() bool { return true }
 
 func (e Ok) Marshal(b []byte) []byte {
 	return redcon.AppendOK(b)
@@ -46,9 +47,10 @@ func (e Ok) Handle(ctx *Context) CommandReply {
 //
 type Err string
 
+func (c Err) Name() string   { return "Err" }
+func (c Err) Help() string   { return "" }
 func (c Err) IsError() bool  { return true }
-func (c Err) IsChange() bool { return false }
-func (c Err) IsWorker() bool  { return true }
+func (c Err) IsWorker() bool { return false }
 
 func (e Err) Error() string {
 	return string(e)
@@ -80,9 +82,10 @@ func (e Err) Handle(ctx *Context) CommandReply {
 //
 type Int int64
 
+func (c Int) Name() string   { return "Int" }
+func (c Int) Help() string   { return "" }
 func (c Int) IsError() bool  { return false }
-func (c Int) IsChange() bool { return false }
-func (c Int) IsWorker() bool  { return true }
+func (c Int) IsWorker() bool { return false }
 
 func (c Int) Marshal(b []byte) []byte {
 	b = redcon.AppendArray(b, 1)
@@ -110,9 +113,10 @@ func (c Int) Handle(ctx *Context) CommandReply {
 //
 type String string
 
+func (c String) Name() string   { return "String" }
+func (c String) Help() string   { return "" }
 func (c String) IsError() bool  { return false }
-func (c String) IsChange() bool { return false }
-func (c String) IsWorker() bool  { return true }
+func (c String) IsWorker() bool { return false }
 
 func (c String) Marshal(b []byte) []byte {
 	return redcon.AppendBulkString(b, string(c))
@@ -139,9 +143,10 @@ func (c String) Handle(ctx *Context) CommandReply {
 //
 type Bytes []byte
 
+func (c Bytes) Name() string   { return "Bytes" }
+func (c Bytes) Help() string   { return "" }
 func (c Bytes) IsError() bool  { return false }
-func (c Bytes) IsChange() bool { return false }
-func (c Bytes) IsWorker() bool  { return true }
+func (c Bytes) IsWorker() bool { return false }
 
 func (c Bytes) Marshal(b []byte) []byte {
 	return redcon.AppendBulk(b, []byte(c))

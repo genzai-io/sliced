@@ -7,26 +7,27 @@ import (
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-func init() { api.Register(api.RaftLeaderName, &RaftLeader{}) }
+func init() { api.Register(&RaftLeader{}) }
 
 type RaftLeader struct {
 	ID   api.RaftID
 	raft api.RaftService
 }
 
+func (c *RaftLeader) Name() string   { return "LEADER" }
+func (c *RaftLeader) Help() string   { return "" }
 func (c *RaftLeader) IsError() bool  { return false }
-func (c *RaftLeader) IsChange() bool { return false }
-func (c *RaftLeader) IsWorker() bool  { return true }
+func (c *RaftLeader) IsWorker() bool { return false }
 
 func (c *RaftLeader) Marshal(buf []byte) []byte {
-	if c.ID.Schema < 0 {
+	if c.ID.DatabaseID < 0 {
 		buf = redcon.AppendArray(buf, 1)
-		buf = redcon.AppendBulkString(buf, api.RaftLeaderName)
+		buf = redcon.AppendBulkString(buf, c.Name())
 	} else {
 		buf = redcon.AppendArray(buf, 3)
-		buf = redcon.AppendBulkString(buf, api.RaftLeaderName)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Schema)
-		buf = redcon.AppendBulkInt32(buf, c.ID.Slice)
+		buf = redcon.AppendBulkString(buf, c.Name())
+		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
 	}
 	return buf
 }
@@ -49,14 +50,14 @@ func (c *RaftLeader) Parse(args [][]byte) Command {
 		if err != nil {
 			return Err("ERR invalid schema id: " + string(args[1]))
 		}
-		cmd.ID.Schema = int32(schemaID)
+		cmd.ID.DatabaseID = int32(schemaID)
 
 		// Parse slice
 		sliceID, err := strconv.Atoi(string(args[2]))
 		if err != nil {
 			return Err("ERR invalid slice id: " + string(args[2]))
 		}
-		cmd.ID.Slice = int32(sliceID)
+		cmd.ID.SliceID = int32(sliceID)
 		return cmd
 	}
 }

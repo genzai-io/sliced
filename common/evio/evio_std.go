@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"syscall"
+	"os"
 )
 
 var errClosing = errors.New("closing")
@@ -26,6 +28,67 @@ type stdserver struct {
 	cond     *sync.Cond     // shutdown signaler
 	serr     error          // signal error
 	accepted uintptr        // accept counter
+	dialed   uintptr        // accept counter
+}
+
+func (s *stdserver) Dial(addr string) error {
+	sa, err := Resolve(addr)
+	if err != nil {
+		return err
+	}
+	return s.DialSockAddr(sa)
+}
+
+func (s *stdserver) DialSockAddr(sa syscall.Sockaddr) error {
+	addr := SockaddrToAddr(sa)
+	var conn net.Conn
+	var err error
+
+	switch v := addr.(type) {
+	case *net.TCPAddr:
+		conn, err = net.DialTCP("tcp", nil, v)
+	case *net.UnixAddr:
+		conn, err = net.DialUnix("unix", nil, v)
+	case *net.UDPAddr:
+		conn, err = net.DialUDP("udp", nil, v)
+	}
+
+	if err != nil {
+		return err
+	}
+	if conn == nil {
+		return os.ErrInvalid
+	}
+
+	// Pick a loop
+	var l *stdloop = nil
+
+	if len(s.loops) > 1 {
+		l = s.loops[int(atomic.LoadUintptr(&s.dialed))%len(s.loops)]
+	} else if len(s.loops) == 1 {
+		l = s.loops[0]
+	}
+
+	if l == nil {
+		conn.Close()
+		return errors.New("no loops")
+	}
+
+	// Increment dialed
+	atomic.AddUintptr(&s.dialed, 1)
+
+	// Init conn
+	c := &stdconn{
+		conn: conn,
+		loop: l,
+	}
+
+	// Put conn into loop map
+	l.conns[c] = true
+
+	l.ch <- c
+
+	return nil
 }
 
 type stdudpconn struct {
@@ -78,7 +141,7 @@ type stderr struct {
 
 func (s *stdserver) Shutdown() error {
 	s.signalShutdown(nil)
-	return s.waitForShutdown()
+	return nil
 }
 
 // waitForShutdown waits for a signal to shutdown
@@ -121,6 +184,11 @@ func stdserve(events Events, listeners []*listener) error {
 		for i, ln := range listeners {
 			svr.Addrs[i] = ln.lnaddr
 		}
+		svr.Dial = s.Dial
+		svr.DialSockAddr = s.DialSockAddr
+		svr.Shutdown = s.Shutdown
+		svr.WaitForShutdown = s.waitForShutdown
+
 		action := events.Serving(svr)
 		switch action {
 		case Shutdown:

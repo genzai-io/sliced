@@ -7,19 +7,18 @@ import (
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-func init() {
-	api.Register("SLEEP", &Sleep{})
-}
+func init() { api.Register(&Sleep{}) }
 
 type Sleep struct{}
 
+func (c *Sleep) Name() string   { return "SLEEP" }
+func (c *Sleep) Help() string   { return "" }
 func (c *Sleep) IsError() bool  { return false }
-func (c *Sleep) IsChange() bool { return false }
-func (c *Sleep) IsWorker() bool  { return true }
+func (c *Sleep) IsWorker() bool { return true }
 
 func (c *Sleep) Marshal(buf []byte) []byte {
 	buf = redcon.AppendArray(buf, 1)
-	buf = redcon.AppendBulkString(buf, "SLEEP")
+	buf = redcon.AppendBulkString(buf, c.Name())
 	return buf
 }
 
