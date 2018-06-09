@@ -33,8 +33,8 @@ type Conn struct {
 	Ev evio.Conn // Connection
 
 	// Buffers
-	In  []byte  // in/ingress or "read" buffer
-	Out *[]byte // out/egress or "write" buffer
+	In  []byte // in/ingress or "read" buffer
+	Out []byte // out/egress or "write" buffer
 
 	backlogMode int32
 	backlog     backlog
@@ -176,30 +176,34 @@ func (c *Conn) Stats() {
 //
 // This is called from the Event Loop goroutine / thread
 //
-func (c *Conn) OnData(in []byte) (out []byte, action evio.Action) {
+func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
+	var out []byte
+	var action = c.Action
+
 	// Loop lock
-	if !c.tryLoopLock() {
-		out = redcon.AppendError(out, "ERR concurrent access")
-		action = evio.Close
-		return
-	}
-	defer c.loopUnlock()
+	//if !c.tryLoopLock() {
+	//	out = redcon.AppendError(out, "ERR concurrent access")
+	//	action = evio.Close
+	//	return out, action
+	//}
+	//defer c.loopUnlock()
 
 	// snapshot current working mode
 	inWorkingMode := atomic.LoadInt32(&c.backlogMode)
 
+	out = c.Out
+	c.Out = nil
 	// Flush write atomically
-	out = *(*[]byte)(atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.Out)), clearBuffer))
-	if len(out) == 0 {
-		out = nil
-	}
+	//out = *(*[]byte)(atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.Out)), clearBuffer))
+	//if len(out) == 0 {
+	//	out = nil
+	//}
 
-	action = c.Action
 	if action == evio.Close {
-		return
+		return out, action
 	}
 
-	var data []byte
+	data := in
 	isWake := len(in) == 0
 	if isWake {
 		data = c.In
@@ -207,7 +211,6 @@ func (c *Conn) OnData(in []byte) (out []byte, action evio.Action) {
 
 		// Wake checkpoint
 		c.wakeCheckpoint = c.wakeRequest
-		c.Unlock()
 
 		// Increment loop wake counter
 		atomic.AddUint64(&c.loopWakes, 1)
@@ -215,12 +218,12 @@ func (c *Conn) OnData(in []byte) (out []byte, action evio.Action) {
 		// Is there nothing to parse?
 		if len(data) == 0 {
 			if inWorkingMode > 0 {
-				return
+				return out, action
 			}
 
 			// Empty backlog if possible
 			out = c.emptyFromLoop(out)
-			return
+			return out, action
 		}
 	} else {
 		// Ingress
@@ -231,18 +234,16 @@ func (c *Conn) OnData(in []byte) (out []byte, action evio.Action) {
 	if len(c.In) > 0 {
 		data = append(c.In, data...)
 		c.In = nil
-	} else {
-		data = in
 	}
 
 	if len(data) == 0 {
 		if inWorkingMode > 0 {
-			return
+			return out, action
 		}
 
 		// Empty backlog if possible
 		out = c.emptyFromLoop(out)
-		return
+		return out, action
 	}
 
 	var
@@ -294,7 +295,7 @@ Parse:
 								// Fatal
 								c.Reason = err
 								c.Action = evio.Close
-								return
+								return out, action
 							}
 							c.next = cmdGroup{}
 							c.next.isMulti = true
@@ -310,7 +311,7 @@ Parse:
 							// Fatal
 							c.Reason = err
 							c.Action = evio.Close
-							return
+							return out, action
 						}
 						c.next = cmdGroup{}
 						goto Parse
@@ -337,10 +338,12 @@ Parse:
 				}
 			}
 
-			if c.Parse == nil {
-				command = api.ParseCommand(packet, args)
-			} else {
-				command = c.Parse(packet, args)
+			if command == nil {
+				if c.Parse == nil {
+					command = api.ParseCommand(packet, args)
+				} else {
+					command = c.Parse(packet, args)
+				}
 			}
 			if command == nil {
 				command = api.Err(fmt.Sprintf("ERR command '%s' not found", args[0]))
@@ -365,22 +368,10 @@ AfterParse:
 					// are for MULTI groups.
 					c.Reason = err
 					c.Action = evio.Close
-					return
+					return out, action
 				}
 				c.next = cmdGroup{}
 			}
-		}
-	}
-
-	// Are there any leftovers (partial commands)?
-	// This method has exclusive access to the "In" buffer
-	// so no need to do this within the mutex.
-	// If the backlog is filled then we will defer command parsing until a later time.
-	if len(data) > 0 {
-		if len(c.In) > 0 {
-			c.In = append(data, c.In...)
-		} else {
-			c.In = data
 		}
 	}
 
@@ -388,12 +379,11 @@ AfterParse:
 	atomic.AddUint64(&c.statsEgress, uint64(len(out)))
 
 	// Are there any leftovers (partial commands)?
+	// This method has exclusive access to the "In" buffer
+	// so no need to do this within the mutex.
+	// If the backlog is filled then we will defer command parsing until a later time.
 	if len(data) > 0 {
-		if len(data) != len(c.In) {
-			c.In = append(c.In[:0], data...)
-		}
-	} else if len(c.In) > 0 {
-		c.In = c.In[:0]
+		c.In = append(c.In, data...)
 	}
 
 	// Set current action
@@ -458,6 +448,7 @@ Next:
 				return out
 			} else {
 				out = c.execute(out, &item)
+				c.next = cmdGroup{}
 			}
 			return out
 		}
@@ -544,6 +535,12 @@ func (c *Conn) execute(out []byte, item *cmdGroup) ([]byte) {
 	for _, command := range item.list {
 		out = c.AppendCommand(out, command)
 	}
+	//*item = cmdGroup{}
+	//item.list = item.list[:0]
+	//item.list = nil
+	//item.isWorker = false
+	//item.isMulti = false
+	//item.qidx = 0
 	return out
 }
 
@@ -634,7 +631,7 @@ func (c *cmdGroup) size() int32 { return int32(len(c.list)) }
 
 var emptyCmdGroup = cmdGroup{}
 
-const maxBacklog = 2
+const maxBacklog = 5
 
 //const maxBacklogIdx = 1
 
