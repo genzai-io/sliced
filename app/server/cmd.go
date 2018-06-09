@@ -76,10 +76,10 @@ func (e *CmdServer) serve() {
 	var events evio.Events
 
 	// Set the number of loops to fire up
-	events.NumLoops = 1//moved.EventLoops
+	events.NumLoops = 1//1//moved.EventLoops
 
 	// Try to balance across the event loops
-	events.LoadBalance = evio.LeastConnections
+	events.LoadBalance = evio.RoundRobin
 
 	// Fired when it is available to receive connections
 	events.Serving = func(srv evio.Server) (action evio.Action) {
@@ -93,7 +93,7 @@ func (e *CmdServer) serve() {
 		// This type of Conn can be upgraded to various other types
 		co := &Conn{
 			Ev: c,
-			//Out: &emptyBuffer,
+			Out: &emptyBuffer,
 		}
 
 		// Let's reuse the read buffer
