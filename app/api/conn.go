@@ -45,7 +45,7 @@ type CommandConn interface {
 	SetKind(kind ConnKind)
 
 	//
-	Durability() Durability
+	GetDurability() Durability
 
 	//
 	GetRaft() RaftService

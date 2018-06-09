@@ -63,3 +63,52 @@ func TestHelper_Decompress(t *testing.T) {
 	fmt.Println("Size After : ", size)
 	fmt.Println("           : ", (float64(size)/float64(len(doc))))
 }
+
+
+type Entry struct {
+	name int
+
+	left *Entry
+}
+
+type EntryList struct {
+	head *Entry
+	tail *Entry
+}
+
+func (e *EntryList) Add(entry *Entry) {
+	if e.head == nil {
+		e.head = entry
+	} else {
+		if e.tail == nil {
+			e.head.left = entry
+			e.tail = entry
+		} else {
+			e.tail.left = entry
+			e.tail = entry
+		}
+	}
+}
+
+func (e *EntryList) Pop() *Entry {
+	if e.head == nil {
+		return nil
+	}
+	h := e.head
+	e.head = h.left
+	return h
+}
+
+func Test_T(t *testing.T) {
+	list := &EntryList{}
+	list.Add(&Entry{name: 1})
+	list.Add(&Entry{name: 2})
+	list.Add(&Entry{name: 3})
+
+	entry := list.head
+	//recurse(tail)
+	for entry != nil {
+		fmt.Println(entry.name)
+		entry = entry.left
+	}
+}

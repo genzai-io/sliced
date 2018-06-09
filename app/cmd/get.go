@@ -1,16 +1,20 @@
 package cmd
 
-import "github.com/genzai-io/sliced/common/redcon"
+import (
+	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/app/api"
+)
+
+func init() { api.Register(&Get{}) }
 
 type Get struct {
 	Key string
 }
 
-func (c *Get) Name() string { return "GET" }
-func (c *Get) Help() string { return "" }
+func (c *Get) Name() string   { return "GET" }
+func (c *Get) Help() string   { return "" }
 func (c *Get) IsError() bool  { return false }
-func (c *Get) IsChange() bool { return false }
-func (c *Get) IsWorker() bool { return true }
+func (c *Get) IsWorker() bool { return false }
 
 func (c *Get) Marshal(b []byte) []byte {
 	b = redcon.AppendArray(b, 2)

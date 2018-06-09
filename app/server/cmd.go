@@ -92,9 +92,8 @@ func (e *CmdServer) serve() {
 		// Create new CmdConn
 		// This type of Conn can be upgraded to various other types
 		co := &Conn{
-			Context: api.Context{
-				Ev: c,
-			},
+			Ev: c,
+			Out: &emptyBuffer,
 		}
 
 		// Let's reuse the read buffer

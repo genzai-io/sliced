@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/robertkrimen/otto"
+	"github.com/ry/v8worker2"
+	"sync"
 )
 
 func TestJS(t *testing.T) {
@@ -63,4 +65,136 @@ func BenchmarkJS(t *testing.B) {
 		vm.Run(script)
 	}
 	t.StopTimer()
+}
+
+var worker *v8worker2.Worker
+var once *sync.Once = &sync.Once{}
+func BenchmarkV8(t *testing.B) {
+	//worker := v8worker2.New(func(msg []byte) []byte {
+	//	//if len(msg) != 5 {
+	//	//	t.Fatal("bad msg", msg)
+	//	//}
+	//	//recvCount++
+	//	return nil
+	//})
+
+	once.Do(func() {
+		worker = v8worker2.New(func(msg []byte) []byte {
+			//if len(msg) != 5 {
+			//	t.Fatal("bad msg", msg)
+			//}
+			//recvCount++
+			return nil
+		})
+		err := worker.Load("send.js", `V8Worker2.send(new ArrayBuffer(5));`)
+		err = worker.Load("receive.js", `V8Worker2.recv(function(msg) {});`)
+		_ = err
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+
+	//err := worker.Load("codeWithRecv.js", `
+	//	V8Worker2.recv(function(msg) {
+	//	});
+	//`)
+//	err := worker.Load("codeWithRecv.js", `
+//		V8Worker2.recv(function(msg) {
+////V8Worker2.send(new ArrayBuffer(5));
+////V8Worker2.print(msg);
+//			//V8Worker2.print("TestBasic recv byteLength", msg.byteLength);
+//		});
+//	`)
+
+
+	t.ReportAllocs()
+	t.ResetTimer()
+	for i := 0; i < t.N; i++ {
+		err := worker.SendBytes([]byte("hii"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.StopTimer()
+		//worker.TerminateExecution()
+		//worker.Dispose()
+
+}
+
+func TestV8(t *testing.T) {
+	recvCount := 0
+	worker := v8worker2.New(func(msg []byte) []byte {
+		if len(msg) != 5 {
+			t.Fatal("bad msg", msg)
+		}
+		recvCount++
+		return nil
+	})
+
+	err := worker.Load("codeWithRecv.js", `
+		V8Worker2.recv(function(msg) {
+			V8Worker2.print("TestBasic recv byteLength", msg.byteLength);
+			if (msg.byteLength !== 3) {
+				throw Error("bad message");
+			}
+		});
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = worker.SendBytes([]byte("hii"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	codeWithSend := `
+		V8Worker2.send(new ArrayBuffer(5));
+		V8Worker2.send(new ArrayBuffer(5));
+	`
+	err = worker.Load("codeWithSend.js", codeWithSend)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if recvCount != 2 {
+		t.Fatal("bad recvCount", recvCount)
+	}
+}
+
+func TestV82(t *testing.T) {
+	recvCount := 0
+	worker := v8worker2.New(func(msg []byte) []byte {
+		//if len(msg) != 5 {
+		//	t.Fatal("bad msg", msg)
+		//}
+		recvCount++
+		return nil
+	})
+
+	err := worker.Load("codeWithRecv.js", `
+		V8Worker2.recv(function(msg) {
+V8Worker2.send(new ArrayBuffer(5));
+//V8Worker2.print(msg);
+			//V8Worker2.print("TestBasic recv byteLength", msg.byteLength);
+		});
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = worker.SendBytes([]byte("hii"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	//codeWithSend := `
+	//	V8Worker2.send(new ArrayBuffer(5));
+	//	V8Worker2.send(new ArrayBuffer(5));
+	//`
+	//err = worker.Load("codeWithSend.js", codeWithSend)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+
+	if recvCount != 2 {
+		//t.Fatal("bad recvCount", recvCount)
+	}
 }

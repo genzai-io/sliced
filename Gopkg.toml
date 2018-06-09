@@ -24,23 +24,6 @@
 #   go-tests = true
 #   unused-packages = true
 
-
-[[constraint]]
-  name = "github.com/garyburd/redigo"
-  version = "1.6.0"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/gobwas/pool"
-
-[[constraint]]
-  name = "github.com/hashicorp/raft"
-  version = "1.0.0"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/mailru/easyjson"
-
 [[constraint]]
   name = "github.com/onsi/ginkgo"
   version = "1.4.0"
@@ -48,10 +31,6 @@
 [[constraint]]
   name = "github.com/onsi/gomega"
   version = "1.3.0"
-
-[[constraint]]
-  branch = "master"
-  name = "github.com/pointc-io/pool"
 
 [[constraint]]
   branch = "master"
@@ -68,10 +47,6 @@
 [[constraint]]
   name = "github.com/spf13/viper"
   version = "1.0.0"
-
-[[constraint]]
-  name = "github.com/vmihailenco/msgpack"
-  version = "3.2.8"
 
 [[constraint]]
   branch = "master"

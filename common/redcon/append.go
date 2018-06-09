@@ -416,6 +416,11 @@ func AppendOK(b []byte) []byte {
 	return append(b, '+', 'O', 'K', '\r', '\n')
 }
 
+// AppendOK appends a Redis protocol OK to the input bytes.
+func AppendQueued(b []byte) []byte {
+	return append(b, '+', 'Q', 'U', 'E', 'U', 'E', 'D', '\r', '\n')
+}
+
 func stripNewlines(s string) string {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\r' || s[i] == '\n' {

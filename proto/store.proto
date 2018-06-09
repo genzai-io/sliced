@@ -217,7 +217,7 @@ message DriveStats {
     uint64 avail = 3;
 }
 
-message Bucket {
+message CloudBucket {
     string id = 1;
     string accessKey = 2;
     string secretKey = 3;
@@ -227,6 +227,11 @@ message Bucket {
     enum API {
         S3 = 0;
     }
+}
+
+message Bucket {
+    int64 id = 1;
+    string name = 2;
 }
 
 message RecordID {

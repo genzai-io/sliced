@@ -2,12 +2,32 @@ package api
 
 import (
 	"strings"
+	"unsafe"
 )
 
 var Commands map[string]Command
 
 func init() {
 	Commands = make(map[string]Command)
+}
+
+func ParseCommand(packet []byte, args [][]byte) Command {
+	if len(args) == 0 {
+		return Err("ERR empty request")
+	}
+
+	name := *(*string)(unsafe.Pointer(&args[0]))
+
+	// Find command
+	command, ok := Commands[name]
+	if !ok {
+		return nil
+	}
+	if command != nil {
+		command = command.Parse(args)
+	}
+
+	return command
 }
 
 func Register(cmd Command) {
