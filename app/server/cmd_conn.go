@@ -20,14 +20,24 @@ func ErrWake(err error) error {
 	return fmt.Errorf("wake: %s", err.Error())
 }
 
+var ErrBufferFilled = errors.New("buffer filled")
+var maxRequestBuffer = 65536
+
 var emptyBuffer []byte
 var clearBuffer = unsafe.Pointer(&emptyBuffer)
 
-// This is a rightfully over-complicated non-blocking RESP command processor.
+// Non-Blocking
+//
+// This type adheres to the RESP protocol where Every command must happen in-order
+// and must have a single RESP reply with the exception of MULTI groups which require
+// up to 2 replies per command:
+// 1. Queued OK
+// 2. Reply
+//
 // Great care goes into the lowest latency responses while guaranteeing there
 // no be no blocking when on the event-loop.
 //
-// Worker (background) commands are supported and will be processed in the background and
+// Worker (background) commands are supported and will be processed in the background which
 // will wake the event-loop up when there is data to write. More commands may
 // queue up concurrently while the worker is in progress. However, only 1 worker
 // may work at a time and once it buffers data to write then it transfers ownership
@@ -45,6 +55,8 @@ var clearBuffer = unsafe.Pointer(&emptyBuffer)
 // same behavior to the Redis implementation. All commands between a MULTI and EXEC
 // command will happen all at once. If one of those commands is a worker then ALL will
 // be processed at once in the background.
+//
+//
 type Conn struct {
 	api.Context
 
@@ -77,6 +89,8 @@ type Conn struct {
 	wakeRequest    uint64
 	wakeLag        uint64
 	loopWakes      uint64
+
+	backpressureCount uint64
 
 	workerRequest    uint64
 	workerCheckpoint uint64
@@ -209,7 +223,7 @@ func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
 	//}
 	//defer c.loopUnlock()
 
-	// snapshot current working mode
+	// Snapshot current working mode
 	inWorkingMode := atomic.LoadInt32(&c.backlogMode)
 
 	//out = c.Out
@@ -258,6 +272,7 @@ func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
 		c.In = nil
 	}
 
+	// Is there nothing in the request buffer?
 	if len(data) == 0 {
 		if inWorkingMode > 0 {
 			return out, action
@@ -374,6 +389,8 @@ Parse:
 			c.next.isWorker = command.IsWorker()
 			c.next.list = append(c.next.list, command)
 		}
+	} else {
+		atomic.AddUint64(&c.backpressureCount, 1)
 	}
 
 AfterParse:
@@ -586,9 +603,7 @@ func (c *Conn) execute(out []byte, item *cmdGroup) ([]byte) {
 }
 
 func (c *Conn) emptyFromWorker() {
-	//c.Lock()
-
-	// Snapshot current size
+	// Snapshot current backlog size
 	size := atomic.LoadInt32(&c.backlog.size)
 	if size == 0 {
 		return
@@ -597,7 +612,6 @@ func (c *Conn) emptyFromWorker() {
 	//
 	count := uint32(size)
 	head := atomic.LoadUint32(&c.backlog.head)
-	//tail := c.backlog.tail
 
 	// atomic writes
 	out := *(*[]byte)(atomic.SwapPointer(
@@ -610,11 +624,13 @@ func (c *Conn) emptyFromWorker() {
 
 loop:
 // Since concurrent writes may happen we will cap the number of "pops" to
-// the snapshot above. Only 1 goroutine "pops" at a time and only 1 "pushes".
+// the snapshot above. Only 1 goroutine "pops" at a time and only the event-loop "pushes".
+// Which means the event-loop is in charge of parsing new commands and adding them to the backlog.
+// The worker merely processes what it can and atomically flushes "write" buffer for use
+// after the event-loop wakes this descriptor up.
 	for index := head; index < head+count; index++ {
 		item, ok := c.backlog.pop()
 		if !ok {
-
 			break loop
 		}
 
@@ -714,7 +730,7 @@ func (b *backlog) push(group cmdGroup) error {
 }
 
 func (b *backlog) pop() (*cmdGroup, bool) {
-	if atomic.LoadInt32(&b.size) == maxBacklog {
+	if atomic.LoadInt32(&b.size) == 0 {
 		return &emptyCmdGroup, false
 	}
 
@@ -730,3 +746,42 @@ func (b *backlog) pop() (*cmdGroup, bool) {
 func (b *backlog) peek() (*cmdGroup, bool) {
 	return &b.list[b.head%maxBacklog], b.size > 0
 }
+
+
+
+
+
+
+//func (c *Conn) push(group cmdGroup) error {
+//	if atomic.LoadInt32(&c.backlog.size) == maxBacklog {
+//		return errFilled
+//	}
+//
+//	c.backlog.list[c.backlog.tail%maxBacklog] = group
+//	atomic.AddUint32(&c.backlog.tail, 1)
+//	// Increase size last
+//	atomic.AddInt32(&c.backlog.size, 1)
+//	return nil
+//}
+//
+//func (c *Conn) pop() (*cmdGroup, bool) {
+//	if atomic.LoadInt32(&c.backlog.size) == 0 {
+//		return &emptyCmdGroup, false
+//	}
+//
+//	val := &c.backlog.list[c.backlog.head%maxBacklog]
+//	// Decrement size first
+//	atomic.AddInt32(&c.backlog.size, -1)
+//	// Increment head
+//	atomic.AddUint32(&c.backlog.head, 1)
+//
+//	return val, true
+//}
+//
+//func (c *Conn) peek() (*cmdGroup, bool) {
+//	size := atomic.LoadInt32(&c.backlog.size)
+//	if size == 0 {
+//		return nil, false
+//	}
+//	return &c.backlog.list[c.backlog.head%maxBacklog], true
+//}

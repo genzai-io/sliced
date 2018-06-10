@@ -22,6 +22,9 @@ func TestConn_OnData(t *testing.T) {
 	conn.send(&cmd.Get{Key: "hi"}, &cmd.Get{ Key: "bye"}).wait()
 	conn.send(&cmd.Get{Key: "hi"}).wait()
 	conn.send(&WorkerSleep{})
+	for i := 0; i < 100; i++ {
+		conn.send(&cmd.Get{Key: "hi"})
+	}
 	conn.send(&cmd.Get{Key: "hi"}).wait()
 	// Parse responses
 	//conn.send(&cmd.Get{Key: "hello"}).wait()
