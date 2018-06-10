@@ -1,12 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/common/redcon"
 	"github.com/genzai-io/sliced/common/raft"
-	"github.com/murlokswarm/errors"
 	"strings"
 )
 

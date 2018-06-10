@@ -90,8 +90,8 @@ type Conn struct {
 
 func newConn(ev evio.Conn) *Conn {
 	conn := &Conn{
-		Context: api.Context{},
 		Ev:      ev,
+		Out: &emptyBuffer,
 	}
 	return conn
 }
@@ -415,8 +415,18 @@ AfterParse:
 	return out, action
 }
 
+func (c *Conn) dispatch() {
+	if atomic.CompareAndSwapInt32(&c.backlogMode, 0, 1) {
+		Workers.Dispatch(c)
+	}
+}
+
 func (c *Conn) Run() {
 	c.emptyFromWorker()
+}
+
+func (c *Conn) pushNext(b []byte) []byte {
+	return b
 }
 
 // This must ONLY be called when no worker is currently in-progress.
@@ -429,6 +439,7 @@ func (c *Conn) emptyFromLoop(out []byte) []byte {
 Next:
 	item, ok = c.backlog.peek()
 	if !ok {
+		// Let's determine what to do with "next" group.
 		item = &c.next
 
 		if item.size() == 0 {
@@ -436,6 +447,8 @@ Next:
 		}
 
 		if item.isMulti {
+			// Continue queuing but do not push next onto the backlog until
+			// we receive an EXEC or DISCARD command
 			out, ok = c.ensureQueued(out, item)
 			if !ok {
 				return out
@@ -447,25 +460,33 @@ Next:
 				// as many commands as possible before depending on the Worker.
 				// We will then have a write to flush which cuts the latency
 				// down significantly.
-				for index, command := range item.list {
+				var (
+					index   int
+					command api.Command
+				)
+			loop:
+				for index, command = range item.list {
 					if command.IsWorker() {
 						if index > 0 {
 							// slice it down
 							item.list = item.list[index:]
 						}
-						return out
+						break loop
 					} else {
 						out = c.AppendCommand(out, command)
 					}
 				}
+				if index > 0 {
+					item.list = item.list[index:]
+				}
 				if item.size() > 0 {
 					c.backlog.push(*item)
 				}
+				// Clear next
+				c.next = cmdGroup{}
 
-				// current head can remain
 				// moving into worker mode
-				atomic.StoreInt32(&c.backlogMode, 1)
-				Workers.Dispatch(c)
+				c.dispatch()
 
 				return out
 			} else {
@@ -515,10 +536,8 @@ Next:
 				}
 			}
 
-			// current head can remain
 			// moving into worker mode
-			atomic.StoreInt32(&c.backlogMode, 1)
-			Workers.Dispatch(c)
+			c.dispatch()
 
 			// Exit
 			return out

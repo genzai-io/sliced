@@ -76,7 +76,7 @@ func (e *CmdServer) serve() {
 	var events evio.Events
 
 	// Set the number of loops to fire up
-	events.NumLoops = 1//1//moved.EventLoops
+	events.NumLoops = 2//1//moved.EventLoops
 
 	// Try to balance across the event loops
 	events.LoadBalance = evio.RoundRobin
