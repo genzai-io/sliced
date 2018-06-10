@@ -64,7 +64,7 @@ var _ = Describe("Web", func() {
 //	err := s.Start()
 //	Expect(err).Should(BeNil())
 //
-//	b.RecordValue("requests", 1)
+//	b.RecordValue("pending", 1)
 //
 //	s.Stop()
 //}, 10)

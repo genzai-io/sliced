@@ -8,6 +8,13 @@ import (
 	"fmt"
 )
 
+var (
+	OK     = Ok{}
+	PONG   = Pong{}
+	QUEUED = Queued{}
+	NIL    = Nil{}
+)
+
 type CommandReply interface {
 	IsError() bool
 
@@ -46,6 +53,17 @@ func (e Ok) UnmarshalReply(packet []byte, args [][]byte) error {
 
 func (e Ok) Handle(ctx *Context) CommandReply {
 	return e
+}
+
+func (o Ok) IsMatch(command CommandReply) bool {
+	if o == command {
+		return true
+	}
+	str, ok := command.(String)
+	if ok {
+		return str == "OK" || str == "ok"
+	}
+	return false
 }
 
 //
@@ -177,6 +195,36 @@ func (c Int) Handle(ctx *Context) CommandReply {
 //
 //
 //
+type BulkString string
+
+func (s BulkString) Name() string   { return "BulkString" }
+func (s BulkString) Help() string   { return "" }
+func (s BulkString) IsError() bool  { return false }
+func (s BulkString) IsWorker() bool { return false }
+
+func (s BulkString) Marshal(b []byte) []byte {
+	return redcon.AppendBulkString(b, string(s))
+}
+
+func (s BulkString) Parse(args [][]byte) Command {
+	return s
+}
+
+func (s BulkString) MarshalReply(b []byte) []byte {
+	return redcon.AppendBulkString(b, string(s))
+}
+
+func (s BulkString) UnmarshalReply(packet []byte, args [][]byte) error {
+	return nil
+}
+
+func (s BulkString) Handle(ctx *Context) CommandReply {
+	return s
+}
+
+//
+//
+//
 type String string
 
 func (s String) Name() string   { return "String" }
@@ -185,7 +233,7 @@ func (s String) IsError() bool  { return false }
 func (s String) IsWorker() bool { return false }
 
 func (s String) Marshal(b []byte) []byte {
-	return redcon.AppendBulkString(b, string(s))
+	return redcon.AppendString(b, string(s))
 }
 
 func (s String) Parse(args [][]byte) Command {
@@ -193,7 +241,7 @@ func (s String) Parse(args [][]byte) Command {
 }
 
 func (s String) MarshalReply(b []byte) []byte {
-	return redcon.AppendBulkString(b, string(s))
+	return redcon.AppendString(b, string(s))
 }
 
 func (s String) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -281,6 +329,152 @@ func (arr Array) Handle(ctx *Context) CommandReply {
 	return arr
 }
 
+//
+//
+//
+type Nil struct{}
+
+func (n Nil) Name() string   { return "Nil" }
+func (n Nil) Help() string   { return "" }
+func (n Nil) IsError() bool  { return false }
+func (n Nil) IsWorker() bool { return true }
+
+func (n Nil) Marshal(b []byte) []byte {
+	return redcon.AppendNull(b)
+}
+
+func (n Nil) Parse(args [][]byte) Command {
+	return n
+}
+
+func (n Nil) MarshalReply(b []byte) []byte {
+	return redcon.AppendNull(b)
+}
+
+func (n Nil) UnmarshalReply(packet []byte, args [][]byte) error {
+	return nil
+}
+
+func (n Nil) Handle(ctx *Context) CommandReply {
+	return n
+}
+
+func ReplyType(reply CommandReply) string {
+	switch reply.(type) {
+	case String:
+		return "String"
+
+	case BulkString:
+		return "BulkString"
+
+	case Bytes:
+		return "Bytes"
+
+	case Int:
+		return "Int"
+
+	case Ok:
+		return "Ok"
+
+	case Nil:
+		return "Nil"
+
+	case Queued:
+		return "Queued"
+
+	case Pong:
+		return "Pong"
+
+	case Array:
+		return "Array"
+	}
+	return "Unknown"
+}
+
+func ReplyEquals(reply CommandReply, reply2 CommandReply) bool {
+	switch rt := reply.(type) {
+	case String:
+		switch r2t := reply2.(type) {
+		case Bytes:
+			return string(rt) == string(r2t)
+		case String:
+			return string(rt) == string(r2t)
+		case BulkString:
+			return string(rt) == string(r2t)
+		}
+		return false
+
+	case BulkString:
+		switch r2t := reply2.(type) {
+		case Bytes:
+			return string(rt) == string(r2t)
+		case String:
+			return string(rt) == string(r2t)
+		case BulkString:
+			return string(rt) == string(r2t)
+		}
+		return false
+
+	case Bytes:
+		switch r2t := reply2.(type) {
+		case Bytes:
+			return string(rt) == string(r2t)
+		case String:
+			return string(rt) == string(r2t)
+		case BulkString:
+			return string(rt) == string(r2t)
+		}
+		return false
+
+	case Int:
+		switch r2t := reply2.(type) {
+		case Int:
+			return int64(rt) == int64(r2t)
+		}
+		return false
+
+	case Ok:
+		if _, ok := reply2.(Ok); ok {
+			return true
+		} else {
+			return false
+		}
+
+	case Nil:
+		if _, ok := reply2.(Nil); ok {
+			return true
+		} else {
+			return false
+		}
+
+	case Queued:
+		if _, ok := reply2.(Queued); ok {
+			return true
+		} else {
+			return false
+		}
+
+	case Pong:
+		if _, ok := reply2.(Pong); ok {
+			return true
+		} else {
+			return false
+		}
+
+	case Array:
+		if av, ok := reply2.(Array); ok {
+			if len(rt) != len(av) {
+				return false
+			}
+			for index, value := range rt {
+				return ReplyEquals(value, av[index])
+			}
+		} else {
+			return false
+		}
+	}
+	return false
+}
 
 //
 //
@@ -359,13 +553,9 @@ func parseInt(p []byte) (Int, error) {
 	return Int(n), nil
 }
 
-var OK = Ok{}
-var PONG = Pong{}
-var QUEUED = Queued{}
-
 type ReplyReader struct {
 	reader *bufio.Reader
-	r *bytes.Reader
+	r      *bytes.Reader
 }
 
 func NewReplyReader(b []byte) *ReplyReader {
@@ -380,7 +570,7 @@ func (rr *ReplyReader) Reset(b []byte) {
 	rr.reader.Reset(rr.r)
 }
 
-func (rr *ReplyReader) ReadReply() (CommandReply, error) {
+func (rr *ReplyReader) Next() (CommandReply, error) {
 	c := rr.reader
 
 	line, err := readLine(c)
@@ -431,11 +621,11 @@ func (rr *ReplyReader) ReadReply() (CommandReply, error) {
 	case '*':
 		n, err := parseLen(line[1:])
 		if n < 0 || err != nil {
-			return nil, err
+			return NIL, err
 		}
 		r := make([]CommandReply, n)
 		for i := range r {
-			r[i], err = rr.ReadReply()
+			r[i], err = rr.Next()
 			if err != nil {
 				return nil, err
 			}

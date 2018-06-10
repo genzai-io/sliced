@@ -34,5 +34,5 @@ func (c Get) Parse(args [][]byte) Command {
 }
 
 func (c Get) Handle(ctx *Context) Reply {
-	return Ok
+	return api.BulkString("key: " + c.Key)
 }
