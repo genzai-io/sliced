@@ -91,7 +91,7 @@ func (e *CmdServer) serve() {
 	events.Opened = func(c evio.Conn) (out []byte, opts evio.Options, action evio.Action) {
 		// Create new CmdConn
 		// This type of Conn can be upgraded to various other types
-		co := &Conn{
+		co := &CmdConn{
 			Ev: c,
 			Out: &emptyBuffer,
 		}
@@ -126,7 +126,7 @@ func (e *CmdServer) serve() {
 		// Notify connection.
 		ctx := co.Context()
 		if ctx != nil {
-			if conn, ok := ctx.(*Conn); ok {
+			if conn, ok := ctx.(*CmdConn); ok {
 				conn.OnClosed()
 				co.SetContext(nil)
 			}

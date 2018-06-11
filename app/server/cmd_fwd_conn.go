@@ -18,7 +18,7 @@ type NodeConn struct {
 
 	out []byte
 
-	clientc *Conn
+	clientc *CmdConn
 	backlog []api.Command
 }
 

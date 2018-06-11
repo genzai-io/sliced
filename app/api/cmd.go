@@ -88,5 +88,5 @@ type Command interface {
 //
 //
 func RAW(b []byte) Command {
-	return Bytes(b)
+	return Bulk(b)
 }

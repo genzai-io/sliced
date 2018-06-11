@@ -321,7 +321,7 @@ func (t *RaftTransport) handleAppendEntries(payload []byte) api.CommandReply {
 		return api.Err("ERR invalid response")
 	}
 	data := encodeAppendEntriesResponse(resp)
-	return api.Bytes(data)
+	return api.Bulk(data)
 }
 
 func encodeVoteRequest(args *raft.RequestVoteRequest) []byte {
@@ -435,7 +435,7 @@ func (t *RaftTransport) handleRequestVote(payload []byte) api.CommandReply {
 	}
 	data := encodeVoteResponse(resp)
 	//data, _ := json.Marshal(resp)
-	return api.Bytes(data)
+	return api.Bulk(data)
 }
 
 // InstallSnapshot implements the Transport interface.

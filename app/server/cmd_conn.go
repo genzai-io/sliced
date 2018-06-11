@@ -26,6 +26,15 @@ var maxRequestBuffer = 65536
 var emptyBuffer []byte
 var clearBuffer = unsafe.Pointer(&emptyBuffer)
 
+type connStats struct {
+	wakes          uint64
+	commands       uint64
+	commandsWorker uint64
+	workerDur      int64
+	ingress        uint64
+	egress         uint64
+}
+
 // Non-Blocking
 //
 // This type adheres to the RESP protocol where Every command must happen in-order
@@ -57,13 +66,14 @@ var clearBuffer = unsafe.Pointer(&emptyBuffer)
 // be processed at once in the background.
 //
 //
-type Conn struct {
+type CmdConn struct {
 	api.Context
 
 	mutex       uintptr
 	mutexMisses uint64
 
-	Ev evio.Conn // Connection
+	Ev   evio.Conn // Connection
+	done bool      // flag to signal it's done
 
 	// Buffers
 	In  []byte  // in/ingress or "read" buffer
@@ -73,37 +83,14 @@ type Conn struct {
 	backlog     backlog
 	next        cmdGroup
 
-	loopMutex       uintptr
-	loopMutexMisses uint64
-	done            bool // flag to signal it's done
-
-	statsWorkers   uint64
-	statsWorkerDur int64
-
 	onDetached func(rwc io.ReadWriteCloser)
 	onData     func(in []byte) (out []byte, action evio.Action)
 
-	// Counter to manage race conditions with the event loop and workers
-	// This keeps track of whether the write buffer
-	wakeCheckpoint uint64
-	wakeRequest    uint64
-	wakeLag        uint64
-	loopWakes      uint64
-
-	backpressureCount uint64
-
-	workerRequest    uint64
-	workerCheckpoint uint64
-
-	// Stats
-	statsTotalCommands uint64
-	statsIngress       uint64
-	statsEgress        uint64
-	statsWakes         uint64
+	stats connStats
 }
 
-func newConn(ev evio.Conn) *Conn {
-	conn := &Conn{
+func NewConn(ev evio.Conn) *CmdConn {
+	conn := &CmdConn{
 		Ev:  ev,
 		Out: &emptyBuffer,
 	}
@@ -115,7 +102,7 @@ func newConn(ev evio.Conn) *Conn {
 // In addition, the Event Loop is inherently single-threaded so the only
 // potential race is from a background Worker happening in parallel with
 // an Event Loop call.
-func (c *Conn) Lock() {
+func (c *CmdConn) Lock() {
 	for !atomic.CompareAndSwapUintptr(&c.mutex, 0, 1) {
 		atomic.AddUint64(&c.mutexMisses, 1)
 		runtime.Gosched()
@@ -123,7 +110,7 @@ func (c *Conn) Lock() {
 }
 
 // Spin-lock TryLock
-func (c *Conn) TryLock() bool {
+func (c *CmdConn) TryLock() bool {
 	if !atomic.CompareAndSwapUintptr(&c.mutex, 0, 1) {
 		atomic.AddUint64(&c.mutexMisses, 1)
 		return false
@@ -133,38 +120,11 @@ func (c *Conn) TryLock() bool {
 }
 
 // Spin-lock Unlock
-func (c *Conn) Unlock() {
+func (c *CmdConn) Unlock() {
 	atomic.StoreUintptr(&c.mutex, 0)
 }
 
-// Spin-lock
-// Only the properties are synchronized and not the command Handle() itself.
-// In addition, the Event Loop is inherently single-threaded so the only
-// potential race is from a background Worker happening in parallel with
-// an Event Loop call.
-func (c *Conn) loopLock() {
-	for !atomic.CompareAndSwapUintptr(&c.loopMutex, 0, 1) {
-		atomic.AddUint64(&c.loopMutexMisses, 1)
-		runtime.Gosched()
-	}
-}
-
-// Spin-lock TryLock
-func (c *Conn) tryLoopLock() bool {
-	if !atomic.CompareAndSwapUintptr(&c.loopMutex, 0, 1) {
-		atomic.AddUint64(&c.loopMutexMisses, 1)
-		return false
-	} else {
-		return true
-	}
-}
-
-// Spin-lock Unlock
-func (c *Conn) loopUnlock() {
-	atomic.StoreUintptr(&c.loopMutex, 0)
-}
-
-func (c *Conn) Detach() error {
+func (c *CmdConn) Detach() error {
 	c.Lock()
 	c.Action = evio.Detach
 	c.Unlock()
@@ -172,13 +132,13 @@ func (c *Conn) Detach() error {
 	return nil
 }
 
-func (c *Conn) OnDetach(rwc io.ReadWriteCloser) {
+func (c *CmdConn) OnDetach(rwc io.ReadWriteCloser) {
 	if rwc != nil {
 		rwc.Close()
 	}
 }
 
-func (c *Conn) Close() error {
+func (c *CmdConn) Close() error {
 	c.Lock()
 	c.Action = evio.Close
 	conn := c.Ev
@@ -190,7 +150,7 @@ func (c *Conn) Close() error {
 	return nil
 }
 
-func (c *Conn) OnClosed() {
+func (c *CmdConn) OnClosed() {
 	c.Lock()
 	c.done = true
 	c.Action = evio.Close
@@ -198,17 +158,17 @@ func (c *Conn) OnClosed() {
 	c.Unlock()
 }
 
-func (c *Conn) Conn() evio.Conn {
+func (c *CmdConn) Conn() evio.Conn {
 	return c.Ev
 }
 
-func (c *Conn) Stats() {
+func (c *CmdConn) Stats() {
 	c.Lock()
 	c.Unlock()
 }
 
 // This is not thread safe
-func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
+func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 	var out []byte
 	var action = c.Action
 
@@ -231,7 +191,7 @@ func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
 		//c.wakeCheckpoint = c.wakeRequest
 
 		// Increment loop wake counter
-		atomic.AddUint64(&c.loopWakes, 1)
+		atomic.AddUint64(&c.stats.wakes, 1)
 
 		// Is there nothing to parse?
 		if len(c.In) == 0 {
@@ -249,7 +209,7 @@ func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
 		}
 	} else {
 		// Ingress
-		atomic.AddUint64(&c.statsIngress, uint64(len(in)))
+		atomic.AddUint64(&c.stats.ingress, uint64(len(in)))
 
 		// Were there any leftovers from the previous event?
 		if len(c.In) > 0 {
@@ -391,27 +351,27 @@ AfterParse:
 	}
 
 	// Egress stats
-	atomic.AddUint64(&c.statsEgress, uint64(len(out)))
+	atomic.AddUint64(&c.stats.egress, uint64(len(out)))
 
 	// Return
 	return out, action
 }
 
-func (c *Conn) getBacklogMode() int32 {
+func (c *CmdConn) getBacklogMode() int32 {
 	return atomic.LoadInt32(&c.backlogMode)
 }
 
-func (c *Conn) dispatch() {
+func (c *CmdConn) dispatch() {
 	if atomic.CompareAndSwapInt32(&c.backlogMode, 0, 1) {
 		Workers.Dispatch(c)
 	}
 }
 
-func (c *Conn) Run() {
+func (c *CmdConn) Run() {
 	c.emptyFromWorker()
 }
 
-func (c *Conn) pushNext(out []byte) ([]byte, int32) {
+func (c *CmdConn) pushNext(out []byte) ([]byte, int32) {
 	// Let's determine what to do with "next" group.
 	item := c.next
 
@@ -470,7 +430,7 @@ func (c *Conn) pushNext(out []byte) ([]byte, int32) {
 }
 
 // This must ONLY be called when no worker is currently in-progress.
-func (c *Conn) emptyFromLoop(out []byte) ([]byte, int32) {
+func (c *CmdConn) emptyFromLoop(out []byte) ([]byte, int32) {
 	var (
 		item *cmdGroup
 		ok   = false
@@ -533,7 +493,7 @@ Next:
 	return out, 0
 }
 
-func (c *Conn) ensureQueued(out []byte, item *cmdGroup) ([]byte, bool) {
+func (c *CmdConn) ensureQueued(out []byte, item *cmdGroup) ([]byte, bool) {
 	// Send Queued responses
 	if item.qidx < item.size() {
 		if item.qidx == 0 {
@@ -557,7 +517,7 @@ func (c *Conn) ensureQueued(out []byte, item *cmdGroup) ([]byte, bool) {
 	return out, true
 }
 
-func (c *Conn) execute(out []byte, item *cmdGroup) ([]byte) {
+func (c *CmdConn) execute(out []byte, item *cmdGroup) ([]byte) {
 	// Run all the commands
 	for _, command := range item.list {
 		out = c.AppendCommand(out, command)
@@ -571,7 +531,7 @@ func (c *Conn) execute(out []byte, item *cmdGroup) ([]byte) {
 	return out
 }
 
-func (c *Conn) emptyFromWorker() {
+func (c *CmdConn) emptyFromWorker() {
 	// Snapshot current backlog size
 	size := atomic.LoadInt32(&c.backlog.size)
 	if size == 0 {
@@ -682,6 +642,8 @@ type backlog struct {
 	tail uint32
 	size int32
 	list []cmdGroup
+
+
 }
 
 func (b *backlog) isFilled() bool {

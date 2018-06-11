@@ -59,7 +59,7 @@ func (o Ok) IsMatch(command CommandReply) bool {
 	if o == command {
 		return true
 	}
-	str, ok := command.(String)
+	str, ok := command.(SimpleString)
 	if ok {
 		return str == "OK" || str == "ok"
 	}
@@ -173,6 +173,7 @@ func (c Int) IsWorker() bool { return false }
 
 func (c Int) Marshal(b []byte) []byte {
 	b = redcon.AppendArray(b, 1)
+
 	return redcon.AppendBulkInt64(b, int64(c))
 }
 
@@ -189,6 +190,37 @@ func (c Int) UnmarshalReply(packet []byte, args [][]byte) error {
 }
 
 func (c Int) Handle(ctx *Context) CommandReply {
+	return c
+}
+
+//
+//
+//
+type Float float64
+
+func (c Float) Name() string   { return "Float" }
+func (c Float) Help() string   { return "" }
+func (c Float) IsError() bool  { return false }
+func (c Float) IsWorker() bool { return false }
+
+func (c Float) Marshal(b []byte) []byte {
+	b = redcon.AppendArray(b, 1)
+	return redcon.AppendBulkInt64(b, int64(c))
+}
+
+func (c Float) Parse(args [][]byte) Command {
+	return c
+}
+
+func (c Float) MarshalReply(b []byte) []byte {
+	return redcon.AppendInt(b, int64(c))
+}
+
+func (c Float) UnmarshalReply(packet []byte, args [][]byte) error {
+	return nil
+}
+
+func (c Float) Handle(ctx *Context) CommandReply {
 	return c
 }
 
@@ -225,61 +257,61 @@ func (s BulkString) Handle(ctx *Context) CommandReply {
 //
 //
 //
-type String string
+type SimpleString string
 
-func (s String) Name() string   { return "String" }
-func (s String) Help() string   { return "" }
-func (s String) IsError() bool  { return false }
-func (s String) IsWorker() bool { return false }
+func (s SimpleString) Name() string   { return "SimpleString" }
+func (s SimpleString) Help() string   { return "" }
+func (s SimpleString) IsError() bool  { return false }
+func (s SimpleString) IsWorker() bool { return false }
 
-func (s String) Marshal(b []byte) []byte {
+func (s SimpleString) Marshal(b []byte) []byte {
 	return redcon.AppendString(b, string(s))
 }
 
-func (s String) Parse(args [][]byte) Command {
+func (s SimpleString) Parse(args [][]byte) Command {
 	return s
 }
 
-func (s String) MarshalReply(b []byte) []byte {
+func (s SimpleString) MarshalReply(b []byte) []byte {
 	return redcon.AppendString(b, string(s))
 }
 
-func (s String) UnmarshalReply(packet []byte, args [][]byte) error {
+func (s SimpleString) UnmarshalReply(packet []byte, args [][]byte) error {
 	return nil
 }
 
-func (s String) Handle(ctx *Context) CommandReply {
+func (s SimpleString) Handle(ctx *Context) CommandReply {
 	return s
 }
 
 //
 //
 //
-type Bytes []byte
+type Bulk []byte
 
-func (by Bytes) Name() string   { return "Bytes" }
-func (by Bytes) Help() string   { return "" }
-func (by Bytes) IsError() bool  { return false }
-func (by Bytes) IsWorker() bool { return false }
+func (by Bulk) Name() string   { return "Bulk" }
+func (by Bulk) Help() string   { return "" }
+func (by Bulk) IsError() bool  { return false }
+func (by Bulk) IsWorker() bool { return false }
 
-func (by Bytes) Marshal(b []byte) []byte {
+func (by Bulk) Marshal(b []byte) []byte {
 	return redcon.AppendBulk(b, []byte(by))
 }
 
-func (by Bytes) Parse(args [][]byte) Command {
+func (by Bulk) Parse(args [][]byte) Command {
 	return by
 }
 
-func (by Bytes) MarshalReply(b []byte) []byte {
+func (by Bulk) MarshalReply(b []byte) []byte {
 	return redcon.AppendBulk(b, []byte(by))
 }
 
-func (by Bytes) UnmarshalReply(packet []byte, args [][]byte) error {
+func (by Bulk) UnmarshalReply(packet []byte, args [][]byte) error {
 	by = args[0]
 	return nil
 }
 
-func (by Bytes) Handle(ctx *Context) CommandReply {
+func (by Bulk) Handle(ctx *Context) CommandReply {
 	return by
 }
 
@@ -361,14 +393,14 @@ func (n Nil) Handle(ctx *Context) CommandReply {
 
 func ReplyType(reply CommandReply) string {
 	switch reply.(type) {
-	case String:
-		return "String"
+	case SimpleString:
+		return "SimpleString"
 
 	case BulkString:
 		return "BulkString"
 
-	case Bytes:
-		return "Bytes"
+	case Bulk:
+		return "Bulk"
 
 	case Int:
 		return "Int"
@@ -393,11 +425,11 @@ func ReplyType(reply CommandReply) string {
 
 func ReplyEquals(reply CommandReply, reply2 CommandReply) bool {
 	switch rt := reply.(type) {
-	case String:
+	case SimpleString:
 		switch r2t := reply2.(type) {
-		case Bytes:
+		case Bulk:
 			return string(rt) == string(r2t)
-		case String:
+		case SimpleString:
 			return string(rt) == string(r2t)
 		case BulkString:
 			return string(rt) == string(r2t)
@@ -406,20 +438,20 @@ func ReplyEquals(reply CommandReply, reply2 CommandReply) bool {
 
 	case BulkString:
 		switch r2t := reply2.(type) {
-		case Bytes:
+		case Bulk:
 			return string(rt) == string(r2t)
-		case String:
+		case SimpleString:
 			return string(rt) == string(r2t)
 		case BulkString:
 			return string(rt) == string(r2t)
 		}
 		return false
 
-	case Bytes:
+	case Bulk:
 		switch r2t := reply2.(type) {
-		case Bytes:
+		case Bulk:
 			return string(rt) == string(r2t)
-		case String:
+		case SimpleString:
 			return string(rt) == string(r2t)
 		case BulkString:
 			return string(rt) == string(r2t)
@@ -523,8 +555,8 @@ func parseLen(p []byte) (int, error) {
 	return n, nil
 }
 
-// parseInt parses an integer reply.
-func parseInt(p []byte) (Int, error) {
+// ParseInt parses an integer reply.
+func ParseInt(p []byte) (Int, error) {
 	if len(p) == 0 {
 		return 0, ProtocolError("malformed integer")
 	}
@@ -596,12 +628,12 @@ func (rr *ReplyReader) Next() (CommandReply, error) {
 			return QUEUED, nil
 
 		default:
-			return String(line[1:]), nil
+			return SimpleString(line[1:]), nil
 		}
 	case '-':
 		return Err(string(line[1:])), nil
 	case ':':
-		return parseInt(line[1:])
+		return ParseInt(line[1:])
 	case '$':
 		n, err := parseLen(line[1:])
 		if n < 0 || err != nil {
@@ -617,7 +649,7 @@ func (rr *ReplyReader) Next() (CommandReply, error) {
 		} else if len(line) != 0 {
 			return nil, ProtocolError("bad bulk string format")
 		}
-		return Bytes(p), nil
+		return BulkString(p), nil
 	case '*':
 		n, err := parseLen(line[1:])
 		if n < 0 || err != nil {
