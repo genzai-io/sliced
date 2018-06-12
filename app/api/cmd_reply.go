@@ -235,11 +235,15 @@ func (s BulkString) IsError() bool  { return false }
 func (s BulkString) IsWorker() bool { return false }
 
 func (s BulkString) Marshal(b []byte) []byte {
+	b = redcon.AppendArray(b, 1)
 	return redcon.AppendBulkString(b, string(s))
 }
 
 func (s BulkString) Parse(args [][]byte) Command {
-	return s
+	if len(args) > 0 {
+		return BulkString(args[0])
+	}
+	return BulkString("")
 }
 
 func (s BulkString) MarshalReply(b []byte) []byte {
@@ -265,7 +269,8 @@ func (s SimpleString) IsError() bool  { return false }
 func (s SimpleString) IsWorker() bool { return false }
 
 func (s SimpleString) Marshal(b []byte) []byte {
-	return redcon.AppendString(b, string(s))
+	b = redcon.AppendArray(b, 1)
+	return redcon.AppendBulkString(b, string(s))
 }
 
 func (s SimpleString) Parse(args [][]byte) Command {
@@ -295,11 +300,15 @@ func (by Bulk) IsError() bool  { return false }
 func (by Bulk) IsWorker() bool { return false }
 
 func (by Bulk) Marshal(b []byte) []byte {
+	b = redcon.AppendArray(b, 1)
 	return redcon.AppendBulk(b, []byte(by))
 }
 
 func (by Bulk) Parse(args [][]byte) Command {
-	return by
+	if len(args) > 0 {
+		return Bulk(args[0])
+	}
+	return Bulk([]byte{})
 }
 
 func (by Bulk) MarshalReply(b []byte) []byte {

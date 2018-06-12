@@ -3,12 +3,49 @@ package server_test
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
 
+	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
 )
+
+type commands struct {
+	name string
+}
+
+var emptyCommands = &[]commands{}
+var emptyClear = unsafe.Pointer(&emptyCommands)
+
+type connection struct {
+	cm *[]commands
+}
+
+func TestConn_Ptr(t *testing.T) {
+	conn := &connection{
+		cm: emptyCommands,
+	}
+
+	//next := &[]commands{}
+	n := []commands{}
+	n = append(n, commands{"1"})
+
+	//atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&conn.cm)), unsafe.Pointer(&n))
+
+	prev := (atomic.SwapPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&conn.cm)),
+		unsafe.Pointer(&n)))
+
+	fmt.Println(*(*[]commands)(prev))
+
+	prev = (atomic.SwapPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&conn.cm)),
+		unsafe.Pointer(&emptyCommands)))
+
+	fmt.Println(conn.cm)
+}
 
 func TestConn_ParseFloat(t *testing.T) {
 	f := float64(1000.1)
@@ -48,16 +85,16 @@ func TestCmdConn_Worker(t *testing.T) {
 	beforeList := make([]Command, before)
 	for i := 0; i < before; i++ {
 		beforeList[i] = &cmd.Get{Key: fmt.Sprintf("before: %d", i)}
-		expectedReplies[i] = OfBulk
+		expectedReplies[i] = WithBulk
 	}
-	conn.SendPacket(beforeList...)
+	conn.Send(beforeList...)
 
 	// Force into worker state
-	conn.SendPacket(&cmd.Sleep{})
+	conn.Send(&cmd.Sleep{})
 
 	// Send a series of single command packets
 	for i := 0; i < backlogged; i++ {
-		conn.SendPacket(&cmd.Get{Key: fmt.Sprintf("backlogged: %d", i)})
+		conn.Send(&cmd.Get{Key: fmt.Sprintf("backlogged: %d", i)})
 	}
 
 	// Wait for all packets
@@ -89,38 +126,124 @@ func TestCmdConn_Worker(t *testing.T) {
 
 //
 func TestCmdConn_MultipleWorkers(t *testing.T) {
+	defaultTimeout = time.Hour
+
 	conn := newMockConn()
+	defer conn.close()
 
-	conn.SendPacket(&cmd.Get{Key: "hi"})
+	conn.
+		Send(&cmd.Get{Key: "hi"}).
+		ShouldReply(t, WithBulk).
 
-	conn.SendPacket(&WorkerSleep{})
-	conn.SendPacket(&WorkerSleep{})
-	conn.SendPacket(&cmd.Get{Key: "hi"})
-	conn.SendPacket(&cmd.Get{Key: "hi"})
-	conn.SendPacket(&cmd.Get{Key: "hi"})
-	conn.SendPacket(&cmd.Get{Key: "hi"})
+		Send(&cmd.Sleep{Millis: 5000}).
+		ShouldNotReply(t).
 
-	packets, err := conn.WaitForPackets(0, conn.requestCount+1, time.Second*3)
-	if err != nil {
-		t.Fatal(err)
+		Send(&cmd.Sleep{Millis: 50}).
+		ShouldNotReply(t).
+
+		Send(&cmd.Get{Key: "hi"}).
+		ShouldNotReply(t).
+
+		Send(&cmd.Get{Key: "hi"}).
+		ShouldNotReply(t).
+
+		Send(&cmd.Get{Key: "hi"}).
+		ShouldNotReply(t).
+
+		Send(&cmd.Get{Key: "hi"}).
+		ShouldNotReply(t).conn.
+
+		ShouldWakeWithin(t, defaultTimeout).
+		ShouldReply(t,
+		WithOK,
+		WithOK,
+		WithBulk,
+		WithBulk,
+		BulkValue("key: hi"),
+		BulkValue("key: hi")).conn.
+
+		ShouldCountReplies(t, len(conn.Commands())).
+		DumpPackets()
+}
+
+//
+func TestCmdConn_MultipleWorkers2(t *testing.T) {
+	defaultTimeout = time.Hour
+	dumpPackets = false
+
+	conn := newMockConn()
+	defer conn.close()
+
+	for i := 0; i < 2; i++ {
+		conn.
+			Send(&cmd.Get{Key: "hi"}).
+			//ShouldReply(t, WithBulk).
+
+			Send(&cmd.Sleep{Millis: 50}).
+			//ShouldNotReply(t).
+		//
+			Send(&cmd.Sleep{Millis: 50}).
+			//ShouldNotReply(t).
+		//
+			Send(&cmd.Get{Key: "hi"}).
+			//ShouldNotReply(t).
+		//
+			Send(&cmd.Get{Key: "hi"})
+			//ShouldNotReply(t).conn.
+		//
+		//Send(&cmd.Get{Key: "hi"}).
+		//ShouldNotReply(t).
+		//
+		//Send(&cmd.Get{Key: "hi"}).
+		//ShouldNotReply(t).conn.
+		//
+
+		//ShouldReply(t,
+		//WithOK,
+		//WithOK,
+		//WithBulk,
+		//WithBulk,
+		//BulkValue("key: hi"),
+		//BulkValue("key: hi")).conn.
+		//
+		//ShouldCountReplies(t, len(conn.Commands())).
+		//DumpPackets()
+
+			//ShouldWakeWithin(t, defaultTimeout)
+
+
 	}
 
-	Dump(packets...)
+	//conn.DumpPackets()
 
-	replies := RepliesOf(packets)
-	if len(replies) != conn.requestCount {
-		t.Errorf("Expected the last packet to have %d replies instead of %d replies", conn.requestCount, len(replies))
-	}
+	time.Sleep(time.Second)
 
-	AssertReplies(t, replies,
-		OfBulk,
-		IsOK,
-		IsOK,
-		OfBulk,
-		OfBulk,
-		IsBulk("key: hi"),
-		IsBulk("key: hi"),
-	)
+	conn.DumpPackets()
 
-	conn.close()
+	//conn.ShouldWakeWithin(t, time.Second * 2)
+
+	//Dump(conn.Packets()...)
+}
+
+//
+func TestCmdConn_Multi(t *testing.T) {
+	conn := newMockConn()
+	defer conn.close()
+
+	conn.
+		Send(api.BulkString("multi")).
+		ShouldReply(t, WithOK).
+
+		Send(&cmd.Get{Key: "a"}).
+		ShouldReply(t, IsQueued).
+
+		Send(&cmd.Get{Key: "a"}).
+		ShouldReply(t, IsQueued).
+
+		Send(api.BulkString("exec")).
+		//ShouldReply(t, WithOK).
+
+		conn.
+
+		DumpPackets()
 }

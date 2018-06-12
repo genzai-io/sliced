@@ -15,7 +15,7 @@ type Command = api.Command
 type Reply = api.CommandReply
 type Err = api.Err
 type String = api.SimpleString
-type Bytes = api.Bulk
+type Bulk = api.Bulk
 
 var Register = api.Register
 
@@ -29,7 +29,7 @@ var Ok Reply = api.Ok{}
 //
 //
 func RAW(b []byte) Command {
-	return Bytes(b)
+	return Bulk(b)
 }
 
 //
@@ -38,15 +38,11 @@ func OK() api.Command {
 }
 
 func Int(value int) api.Command {
-	return RAW(redcon.AppendInt(nil, int64(value)))
-}
-
-func Bulk(b []byte) api.Command {
-	return RAW(redcon.AppendBulk(nil, b))
+	return api.Int(value)
 }
 
 func BulkString(str string) api.Command {
-	return RAW(redcon.AppendBulkString(nil, str))
+	return api.BulkString(str)
 }
 
 //

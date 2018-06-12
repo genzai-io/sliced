@@ -1,17 +1,18 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"errors"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
 
+	"strings"
+
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/common/evio"
 	"github.com/genzai-io/sliced/common/redcon"
-	"strings"
 )
 
 var maxCommandBacklog = 10000
@@ -26,6 +27,8 @@ var maxRequestBuffer = 65536
 var emptyBuffer []byte
 var clearBuffer = unsafe.Pointer(&emptyBuffer)
 
+var workerBuffer []byte
+
 type connStats struct {
 	wakes          uint64
 	commands       uint64
@@ -34,6 +37,13 @@ type connStats struct {
 	ingress        uint64
 	egress         uint64
 }
+
+var emptyList = &[]cmdGroup{}
+
+const (
+	idleState       int32 = 0
+	dispatchedState int32 = 1
+)
 
 // Non-Blocking
 //
@@ -79,9 +89,15 @@ type CmdConn struct {
 	In  []byte  // in/ingress or "read" buffer
 	Out *[]byte // out/egress or "write" buffer
 
-	backlogMode int32
-	backlog     backlog
+	backlog     *[]cmdGroup
+	worker      *[]cmdGroup
+	workerState int32
 	next        cmdGroup
+
+	// For "multi" transactions this is registry of vars of named results.
+	// $x = GET key
+	// if $x == 0 SET key $x.incr()
+	register map[string]api.CommandReply
 
 	onDetached func(rwc io.ReadWriteCloser)
 	onData     func(in []byte) (out []byte, action evio.Action)
@@ -91,8 +107,10 @@ type CmdConn struct {
 
 func NewConn(ev evio.Conn) *CmdConn {
 	conn := &CmdConn{
-		Ev:  ev,
-		Out: &emptyBuffer,
+		Ev:      ev,
+		Out:     &emptyBuffer,
+		backlog: emptyList,
+		worker:  emptyList,
 	}
 	return conn
 }
@@ -173,35 +191,34 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 	var action = c.Action
 
 	// Snapshot current working mode
-	backlogMode := atomic.LoadInt32(&c.backlogMode)
+	workerState := atomic.LoadInt32(&c.workerState)
 
 	// Flush write atomically
-	out = *(*[]byte)(atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.Out)), clearBuffer))
-	if len(out) == 0 {
-		out = nil
-	}
+	out = c.swapOut(&emptyBuffer)
+	//if len(o) > 0 {
+	//	out = append(out, o...)
+	//}
 
 	if action == evio.Close {
 		return out, action
 	}
 
+	// Load the backlog
+	backlog := c.loadBacklog()
+
 	data := in
 	if len(in) == 0 {
-		// Wake checkpoint
-		//c.wakeCheckpoint = c.wakeRequest
-
 		// Increment loop wake counter
 		atomic.AddUint64(&c.stats.wakes, 1)
 
 		// Is there nothing to parse?
 		if len(c.In) == 0 {
-			if backlogMode > 0 {
-				return out, action
-			}
+			//if workerState > 0 {
+			//	return out, action
+			//}
 
 			// Empty backlog if possible
-			out, backlogMode = c.emptyFromLoop(out)
-			return out, action
+			goto AfterParse
 		} else {
 			// Were there any leftovers from the previous event?
 			data = c.In
@@ -218,127 +235,192 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 		}
 	}
 
-	// Is there nothing in the request buffer?
-	if len(data) == 0 {
-		if backlogMode > 0 {
-			return out, action
-		}
+	// Is there any data to parse?
+	if len(data) > 0 {
+		var
+		(
+			packet   []byte
+			complete bool
+			args     [][]byte
+			err      error
+			command  api.Command
+		)
 
-		// Empty backlog if possible
-		out, backlogMode = c.emptyFromLoop(out)
-		return out, action
-	}
+	Parse:
+	// Let's parse the commands
+		for {
+			// Read next command.
+			packet, complete, args, _, data, err = redcon.ParseNextCommand(data, args[:0])
 
-	var
-	(
-		packet   []byte
-		complete bool
-		args     [][]byte
-		err      error
-		command  api.Command
-	)
+			if err != nil {
+				c.Lock()
+				c.Action = evio.Close
+				c.Reason = err
+				out = redcon.AppendError(out, err.Error())
+				c.Unlock()
+				return out, evio.Close
+			}
 
-Parse:
-// Let's parse the commands
-	for {
-		// Read next command.
-		packet, complete, args, _, data, err = redcon.ParseNextCommand(data, args[:0])
+			// Do we need more data?
+			if !complete {
+				// Exit loop.
+				goto AfterParse
+			}
 
-		if err != nil {
-			c.Lock()
-			c.Action = evio.Close
-			c.Reason = err
-			out = redcon.AppendError(out, err.Error())
-			c.Unlock()
-			return out, evio.Close
-		}
+			switch len(args) {
+			case 0:
+				goto AfterParse
 
-		// Do we need more data?
-		if !complete {
-			// Exit loop.
-			goto AfterParse
-		}
+			case 1:
+				name := *(*string)(unsafe.Pointer(&args[0]))
 
-		switch len(args) {
-		case 0:
-			goto AfterParse
-
-		case 1:
-			switch strings.ToLower(string(args[0])) {
-			case "multi":
-				if c.next.isMulti {
-					c.next.list = append(c.next.list, api.Err("ERR multi cannot nest"))
-					goto Parse
-				} else {
-					if backlogMode == 0 {
-						out, backlogMode = c.emptyFromLoop(out)
+				switch strings.ToLower(name) {
+				case "multi":
+					if c.next.isMulti {
+						c.next.list = append(c.next.list, api.Err("ERR multi cannot nest"))
+						goto Parse
 					} else {
-						c.backlog.push(c.next)
-					}
+						if c.next.size() > 0 {
+							backlog = append(backlog, c.next)
+						}
 
-					c.next = cmdGroup{}
-					c.next.isMulti = true
-					c.next.list = append(c.next.list, api.Ok{})
-					goto Parse
-				}
-
-			case "exec":
-				if c.next.isMulti {
-					if backlogMode == 0 {
-						out, backlogMode = c.emptyFromLoop(out)
-					} else {
-						// Did we run out of space in the backlog?
-						c.backlog.push(c.next)
 						c.next = cmdGroup{}
+						c.next.isMulti = true
+						c.next.qidx = -1
 						goto Parse
 					}
-				} else {
-					c.next.list = append(c.next.list, api.Err("ERR exec not expected"))
-					goto Parse
+
+				case "exec":
+					if c.next.isMulti {
+						if c.next.size() > 0 {
+
+						}
+						backlog = append(backlog, c.next)
+						c.next = cmdGroup{}
+						goto Parse
+
+						//if workerState == 0 {
+						//	out, workerState = c.emptyFromLoop(out)
+						//} else {
+						//	// Did we run out of space in the backlog?
+						//	c.backlog.push(c.next)
+						//
+						//	goto Parse
+						//}
+					} else {
+						c.next.list = append(c.next.list, api.Err("ERR exec not expected"))
+						goto Parse
+					}
+
+				case "discard":
+					if c.next.isMulti {
+						c.next = cmdGroup{}
+						c.next.list = append(c.next.list, api.Ok{})
+						goto Parse
+					} else {
+						c.next.list = append(c.next.list, api.Err("ERR discard not expected"))
+						goto Parse
+					}
 				}
 
-			case "discard":
-				if c.next.isMulti {
-					c.next = cmdGroup{}
-					c.next.list = append(c.next.list, api.Ok{})
-					goto Parse
-				} else {
-					c.next.list = append(c.next.list, api.Err("ERR discard not expected"))
-					goto Parse
+			default:
+				// Do we have an expression?
+				if len(args[1]) > 0 && args[1][0] == '=' {
+
 				}
 			}
 
-		default:
-			// Do we have an expression?
-			if len(args[1]) > 0 && args[1][0] == '=' {
-
+			if command == nil {
+				if c.Parse == nil {
+					command = api.ParseCommand(packet, args)
+				} else {
+					command = c.Parse(packet, args)
+				}
 			}
-		}
-
-		if command == nil {
-			if c.Parse == nil {
-				command = api.ParseCommand(packet, args)
-			} else {
-				command = c.Parse(packet, args)
+			if command == nil {
+				command = api.Err(fmt.Sprintf("ERR command '%s' not found", args[0]))
 			}
-		}
-		if command == nil {
-			command = api.Err(fmt.Sprintf("ERR command '%s' not found", args[0]))
-		}
 
-		c.next.isWorker = command.IsWorker()
-		c.next.list = append(c.next.list, command)
+			c.next.isWorker = command.IsWorker()
+			c.next.list = append(c.next.list, command)
+		}
 	}
 
 AfterParse:
 
-// Try to process any commands if possible and/or dispatch a worker.
-	if backlogMode == 0 {
-		out, backlogMode = c.emptyFromLoop(out)
-	} else {
-		if c.next.size() > 0 && !c.next.isMulti {
-			c.backlog.push(c.next)
-			c.next = cmdGroup{}
+// Should push next?
+	if c.next.size() > 0 {
+		if !c.next.isMulti {
+			backlog = append(backlog, c.next)
+			c.next.clear()
+		}
+	}
+
+	if workerState == dispatchedState {
+		//fmt.Println(backlog)
+	}
+
+	if len(backlog) > 0 {
+		if workerState == idleState {
+			var (
+				group cmdGroup
+				index int
+				ok    bool
+			)
+
+		loop:
+			for index, group = range backlog {
+				if group.isWorker {
+					if group.isMulti {
+						out, ok = c.sendQueued(out, &group)
+						if !ok {
+							goto loop
+						}
+					} else {
+					bl:
+					// Process until the first worker command is foun.
+					// This optimizes are time with the event loop by processing
+					// as many commands as possible before depending on the Worker.
+					// We will then have a write to flush which cuts the latency
+					// down significantly.
+						for index, command := range group.list {
+							if command.IsWorker() {
+								if index > 0 {
+									// slice it down
+									group.list = group.list[index:]
+								}
+								break bl
+							} else {
+								out = c.AppendCommand(out, command)
+							}
+						}
+					}
+
+					workerState = dispatchedState
+					backlog = backlog[index:]
+					break loop
+				} else {
+					if group.isMulti {
+						out, ok = c.sendQueued(out, &group)
+						if !ok {
+							goto loop
+						}
+					}
+
+					// Run all the commands
+					out = c.execute(out, &group)
+				}
+			}
+
+			if workerState == dispatchedState {
+				c.swapWorker(&backlog)
+				atomic.StoreInt32(&c.workerState, dispatchedState)
+				//c.dispatch()
+				Workers.Dispatch(c)
+			}
+		} else {
+			// Append to the backlog
+			c.storeBacklog(&backlog)
 		}
 	}
 
@@ -357,199 +439,87 @@ AfterParse:
 	return out, action
 }
 
-func (c *CmdConn) getBacklogMode() int32 {
-	return atomic.LoadInt32(&c.backlogMode)
-}
-
 func (c *CmdConn) dispatch() {
-	if atomic.CompareAndSwapInt32(&c.backlogMode, 0, 1) {
-		Workers.Dispatch(c)
-	}
+	//if atomic.CompareAndSwapInt32(&c.workerState, 0, 1) {
+	Workers.Dispatch(c)
+	//}
 }
 
-func (c *CmdConn) Run() {
-	c.emptyFromWorker()
-}
-
-func (c *CmdConn) pushNext(out []byte) ([]byte, int32) {
-	// Let's determine what to do with "next" group.
-	item := c.next
-
-	if item.size() == 0 {
-		return out, 0
+func (c *CmdConn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
+	// Send +OK for the "multi" command
+	if group.qidx == -1 {
+		out = redcon.AppendOK(out)
+		group.qidx = 0
 	}
 
-	if item.isMulti {
-		// Continue queuing but do not push next onto the backlog until
-		// we receive an EXEC or DISCARD command
-		//var ok bool
-		out, _ = c.ensureQueued(out, &item)
-		return out, 0
-	} else {
-		if item.isWorker {
-			// Process until the first worker command is foun.
-			// This optimizes are time with the event loop by processing
-			// as many commands as possible before depending on the Worker.
-			// We will then have a write to flush which cuts the latency
-			// down significantly.
-			var (
-				index   int
-				command api.Command
-			)
-		loop:
-			for index, command = range item.list {
-				if command.IsWorker() {
-					if index > 0 {
-						// slice it down
-						item.list = item.list[index:]
-					}
-					break loop
-				} else {
-					out = c.AppendCommand(out, command)
-				}
-			}
-			if index > 0 {
-				item.list = item.list[index:]
-			}
-			if item.size() > 0 {
-				c.backlog.push(item)
-			}
-			// Clear next
-			c.next = cmdGroup{}
-
-			// moving into worker mode
-			c.dispatch()
-
-			return out, 1
-		} else {
-			out = c.execute(out, &item)
-			c.next = cmdGroup{}
-		}
-	}
-	return out, 0
-}
-
-// This must ONLY be called when no worker is currently in-progress.
-func (c *CmdConn) emptyFromLoop(out []byte) ([]byte, int32) {
-	var (
-		item *cmdGroup
-		ok   = false
-	)
-
-Next:
-	item, ok = c.backlog.peek()
-	if !ok {
-		// Let's determine what to do with "next" group.
-		return c.pushNext(out)
-	} else {
-		if !item.isWorker {
-			// pop it since we can execute immediately
-			c.backlog.pop()
-
-			if item.isMulti {
-				out, ok = c.ensureQueued(out, item)
-				if !ok {
-					goto Next
-				}
-			}
-
-			// Run all the commands
-			out = c.execute(out, item)
-
-			goto Next
-		} else {
-			if item.isMulti {
-				out, ok = c.ensureQueued(out, item)
-				if !ok {
-					goto Next
-				}
-			} else {
-				// Process until the first worker command is foun.
-				// This optimizes are time with the event loop by processing
-				// as many commands as possible before depending on the Worker.
-				// We will then have a write to flush which cuts the latency
-				// down significantly.
-				for index, command := range item.list {
-					if command.IsWorker() {
-						if index > 0 {
-							// slice it down
-							item.list = item.list[index:]
-						}
-						return out, 0
-					} else {
-						out = c.AppendCommand(out, command)
-					}
-				}
-			}
-
-			// moving into worker mode
-			c.dispatch()
-
-			// Exit
-			return out, 1
-		}
+	if group.size() == 0 {
+		return out, true
 	}
 
-	return out, 0
-}
+	// Followed by +QUEUED for all the other commands in the group
+	for i := group.qidx; i < group.size(); i++ {
+		command := group.list[i]
+		// Errors will cancel the whole group
+		if command.IsError() {
+			// Append the error
+			out = c.AppendCommand(out, command)
 
-func (c *CmdConn) ensureQueued(out []byte, item *cmdGroup) ([]byte, bool) {
-	// Send Queued responses
-	if item.qidx < item.size() {
-		if item.qidx == 0 {
-			out = c.AppendCommand(out, item.list[0])
-			item.qidx = 1
+			// Reset the group
+			group.clear()
+
+			// Exit as error
+			return out, false
 		}
-		for i := item.qidx; i < item.size(); i++ {
-			command := item.list[i]
-			if command.IsError() {
-				out = c.AppendCommand(out, command)
-				item.isMulti = false
-				item.isWorker = false
-				item.qidx = 0
-				item.list = item.list[:]
-				return out, false
-			}
-			out = redcon.AppendQueued(out)
-		}
-		item.qidx = item.size()
+		out = redcon.AppendQueued(out)
 	}
+	group.qidx = group.size()
+
 	return out, true
 }
 
-func (c *CmdConn) execute(out []byte, item *cmdGroup) ([]byte) {
-	// Run all the commands
-	for _, command := range item.list {
-		out = c.AppendCommand(out, command)
+func (c *CmdConn) execute(out []byte, group *cmdGroup) ([]byte) {
+	if group.isMulti {
+		var ok bool
+		out, ok = c.sendQueued(out, group)
+		if !ok {
+			return out
+		}
+
+		// let's out as a single Array
+		out = redcon.AppendArray(out, int(group.size()))
+
+		// Run all the commands
+		for _, command := range group.list {
+			out = c.AppendCommand(out, command)
+		}
+	} else {
+		// Run all the commands
+		for _, command := range group.list {
+			out = c.AppendCommand(out, command)
+		}
 	}
-	//*item = cmdGroup{}
-	//item.list = item.list[:0]
-	//item.list = nil
-	//item.isWorker = false
-	//item.isMulti = false
-	//item.qidx = 0
+
 	return out
 }
 
-func (c *CmdConn) emptyFromWorker() {
-	// Snapshot current backlog size
-	size := atomic.LoadInt32(&c.backlog.size)
-	if size == 0 {
+func (c *CmdConn) wake() {
+	if err := c.Ev.Wake(); err != nil {
+		c.Reason = err
+		c.Action = evio.Close
+	}
+}
+
+// Worker run
+func (c *CmdConn) Run() {
+	// Atomically get and clear the work list
+	commands := c.swapWorker(_EmptyCommands)
+	if commands == nil || len(commands) == 0 {
+		c.wake()
 		return
 	}
 
-	//
-	count := uint32(size)
-	head := atomic.LoadUint32(&c.backlog.head)
-
 	// atomic writes
-	out := *(*[]byte)(atomic.SwapPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&c.Out)),
-		clearBuffer),
-	)
-	if len(out) == 0 {
-		out = nil
-	}
+	out := c.swapOut(&emptyBuffer)
 
 loop:
 // Since concurrent writes may happen we will cap the number of "pops" to
@@ -557,12 +527,7 @@ loop:
 // Which means the event-loop is in charge of parsing new commands and adding them to the backlog.
 // The worker merely processes what it can and atomically flushes "write" buffer for use
 // after the event-loop wakes this descriptor up.
-	for index := head; index < head+count; index++ {
-		item, ok := c.backlog.pop()
-		if !ok {
-			break loop
-		}
-
+	for _, item := range commands {
 		if item.size() == 0 {
 			continue loop
 		}
@@ -570,13 +535,7 @@ loop:
 		if item.isMulti {
 			// Send Queued responses first
 			if item.qidx < int32(item.size()) {
-				for i := item.qidx; i < item.size(); i++ {
-					command := item.list[i]
-					if command.IsError() {
-						out = c.AppendCommand(out, command)
-						continue loop
-					}
-				}
+				c.sendQueued(out, &item)
 			}
 			// Run all the commands
 			for _, command := range item.list {
@@ -595,14 +554,79 @@ loop:
 	if out == nil {
 		out = emptyBuffer
 	}
+
 	// Atomically set write buffer
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.Out)), unsafe.Pointer(&out))
+	c.swapOut(&out)
+	//atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.Out)), unsafe.Pointer(&out))
 
 	// Flip into non working mode
-	atomic.StoreInt32(&c.backlogMode, 0)
+	atomic.StoreInt32(&c.workerState, idleState)
 
 	// Wake up the loop
-	c.Ev.Wake()
+	c.wake()
+}
+
+var _EmptyCommands = &[]cmdGroup{}
+var _EmptyCommandsPtr = unsafe.Pointer(&_EmptyCommands)
+
+func (c *CmdConn) swapWorker(to *[]cmdGroup) []cmdGroup {
+	ptr := atomic.SwapPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&c.worker)),
+		unsafe.Pointer(&*to),
+	)
+
+	if ptr == nil || ptr == _EmptyCommandsPtr {
+		return nil
+	} else {
+		g := (*[]cmdGroup)(ptr)
+		return *g
+	}
+}
+
+func (c *CmdConn) loadBacklog() []cmdGroup {
+	ptr := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.backlog)))
+	if ptr == nil || ptr == _EmptyCommandsPtr {
+		return nil
+	} else {
+		c := (*[]cmdGroup)(ptr)
+		return *c
+	}
+}
+
+func (c *CmdConn) storeBacklog(to *[]cmdGroup) {
+	atomic.StorePointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&c.backlog)),
+		unsafe.Pointer(&*to),
+	)
+}
+
+func (c *CmdConn) swapBacklog(to *[]cmdGroup) []cmdGroup {
+	ptr := atomic.SwapPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&c.backlog)),
+		unsafe.Pointer(&*to),
+	)
+
+	if ptr == nil || ptr == _EmptyCommandsPtr {
+		return nil
+	} else {
+		g := (*[]cmdGroup)(ptr)
+		return *g
+	}
+}
+
+func (c *CmdConn) swapOut(to *[]byte) []byte {
+	ptr := atomic.SwapPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&c.Out)),
+		unsafe.Pointer(&*to),
+	)
+
+	if ptr == nil || ptr == clearBuffer {
+		return nil
+	} else {
+		// De-reference
+		g := (*[]byte)(ptr)
+		return *g
+	}
 }
 
 type cmdGroup struct {
@@ -618,7 +642,7 @@ func (c *cmdGroup) clear() {
 	c.isMulti = false
 	c.isWorker = false
 	c.qidx = 0
-	c.list = nil
+	c.list = c.list[:0]
 }
 
 func (c *cmdGroup) size() int32 { return int32(len(c.list)) }
@@ -627,96 +651,60 @@ func (c *cmdGroup) size() int32 { return int32(len(c.list)) }
 //	c.list = append(c.list, command)
 //}
 
-var emptyCmdGroup = cmdGroup{}
-
-const maxBacklog = 3
-
-//const maxBacklogIdx = 1
-
-var errFilled = errors.New("backlog filled")
-
-// Lock free circular list
-// It supports 1 concurrent reader and 1 concurrent writer.
-type backlog struct {
-	head uint32
-	tail uint32
-	size int32
-	list []cmdGroup
-
-
-}
-
-func (b *backlog) isFilled() bool {
-	return atomic.LoadInt32(&b.size) == maxBacklog
-}
-
-func (b *backlog) push(group cmdGroup) error {
-	//if atomic.LoadInt32(&b.size) == maxBacklog {
-	//	return errFilled
-	//}
-
-	//b.list[b.tail%maxBacklog] = group
-	b.list = append(b.list, group)
-	atomic.AddUint32(&b.tail, 1)
-	// Increase size last
-	atomic.AddInt32(&b.size, 1)
-	return nil
-}
-
-func (b *backlog) pop() (*cmdGroup, bool) {
-	if atomic.LoadInt32(&b.size) == 0 {
-		return &emptyCmdGroup, false
-	}
-
-	//val := &b.list[b.head%maxBacklog]
-	val := b.list[0]
-	b.list = b.list[1:]
-	// Decrement size first
-	atomic.AddInt32(&b.size, -1)
-	// Increment head
-	//atomic.AddUint32(&b.head, 1)
-
-	return &val, true
-}
-
-func (b *backlog) peek() (*cmdGroup, bool) {
-	if atomic.LoadInt32(&b.size) == 0 {
-		return &emptyCmdGroup, false
-	}
-	return &b.list[0], true
-	//return &b.list[b.head%maxBacklog], false
-}
-
-//func (c *Conn) push(group cmdGroup) error {
-//	if atomic.LoadInt32(&c.backlog.size) == maxBacklog {
-//		return errFilled
-//	}
+//var emptyCmdGroup = cmdGroup{}
 //
-//	c.backlog.list[c.backlog.tail%maxBacklog] = group
-//	atomic.AddUint32(&c.backlog.tail, 1)
+//const maxBacklog = 3
+//
+////const maxBacklogIdx = 1
+//
+//var errFilled = errors.New("backlog filled")
+//
+//// Lock free circular list
+//// It supports 1 concurrent reader and 1 concurrent writer.
+//type backlog struct {
+//	head uint32
+//	tail uint32
+//	size int32
+//	list []cmdGroup
+//}
+//
+//func (b *backlog) isFilled() bool {
+//	return atomic.LoadInt32(&b.size) == maxBacklog
+//}
+//
+//func (b *backlog) push(group cmdGroup) error {
+//	//if atomic.LoadInt32(&b.size) == maxBacklog {
+//	//	return errFilled
+//	//}
+//
+//	//b.list[b.tail%maxBacklog] = group
+//	b.list = append(b.list, group)
+//	atomic.AddUint32(&b.tail, 1)
 //	// Increase size last
-//	atomic.AddInt32(&c.backlog.size, 1)
+//	atomic.AddInt32(&b.size, 1)
 //	return nil
 //}
 //
-//func (c *Conn) pop() (*cmdGroup, bool) {
-//	if atomic.LoadInt32(&c.backlog.size) == 0 {
+//func (b *backlog) pop() (*cmdGroup, bool) {
+//	if atomic.LoadInt32(&b.size) == 0 {
 //		return &emptyCmdGroup, false
 //	}
 //
-//	val := &c.backlog.list[c.backlog.head%maxBacklog]
+//	//val := &b.list[b.head%maxBacklog]
+//	val := b.list[0]
+//	b.list = b.list[1:]
 //	// Decrement size first
-//	atomic.AddInt32(&c.backlog.size, -1)
+//	atomic.AddInt32(&b.size, -1)
 //	// Increment head
-//	atomic.AddUint32(&c.backlog.head, 1)
+//	//atomic.AddUint32(&b.head, 1)
 //
-//	return val, true
+//	return &val, true
 //}
 //
-//func (c *Conn) peek() (*cmdGroup, bool) {
-//	size := atomic.LoadInt32(&c.backlog.size)
-//	if size == 0 {
-//		return nil, false
+//func (b *backlog) peek() (*cmdGroup, bool) {
+//	if atomic.LoadInt32(&b.size) == 0 {
+//		return &emptyCmdGroup, false
 //	}
-//	return &c.backlog.list[c.backlog.head%maxBacklog], true
+//	return &b.list[0], true
+//	//return &b.list[b.head%maxBacklog], false
 //}

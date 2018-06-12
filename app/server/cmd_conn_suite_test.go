@@ -12,22 +12,27 @@ import (
 	"time"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/app/cmd"
 	"github.com/genzai-io/sliced/app/server"
 	"github.com/genzai-io/sliced/common/evio"
 )
 
 var (
 	ErrTimeout = errors.New("timeout")
+
+	defaultTimeout = time.Second * 5
+
+	dumpPackets = true
 )
 
-type WorkerSleep = cmd.Sleep
 type Command = api.Command
 type Reply = api.CommandReply
 
 func AssertReplies(t *testing.T, replies []Reply, shouldMatch ...ReplyMatcher) {
 	if len(replies) != len(shouldMatch) {
 		t.Errorf("received %d, but expected %d", len(replies), len(shouldMatch))
+	}
+	if len(replies) == 0 {
+		return
 	}
 	for index, reply := range replies {
 		match := shouldMatch[index]
@@ -43,28 +48,60 @@ func newMockConn() *mockEvConn {
 	ev := &mockEvConn{
 		ctx:         ctx,
 		cancel:      cancel,
-		reader:      api.NewReplyReader([]byte{}),
-		eventLoopCh: make(chan interface{}, 10000),
-		dataCh:      make(chan *packet, 10000),
-		replyCh:     make(chan api.CommandReply, 10000),
+		eventLoopCh: make(chan interface{}, 1000),
+		dataCh:      make(chan *packet, 1000),
+		replyCh:     make(chan api.CommandReply, 1000),
+		wakeCh:      make(chan *packet, 1000),
 	}
 	conn := server.NewConn(ev)
 	ev.conn = conn
-	ev.onData = conn.OnData
 
 	ev.start()
 	return ev
 }
 
+// Mocks an event loop data event
 type packet struct {
 	sequence int
-	in       []byte
-	out      []byte
-	action   evio.Action
+	conn     *mockEvConn
 
-	pending  int
-	requests []*command
-	replies  []api.CommandReply
+	// CmdConn data
+	in     []byte
+	out    []byte
+	action evio.Action
+
+	// State
+	beforeRequests int
+	beforeReplies  int
+	afterReplies   int
+
+	pending int
+
+	// Requests
+	requests []Command
+	// Replies
+	replies []Reply
+
+	ch chan *packet
+}
+
+func (l *packet) Wait() *packet {
+	select {
+	case p := <-l.ch:
+		return p
+
+	case <-time.After(time.Second * 10):
+		panic("timed-out waiting for packet")
+	}
+	return l
+}
+
+func (l *packet) Send(command ...Command) *packet {
+	return l.conn.Send(command...)
+}
+
+func (l *packet) IsWake() bool {
+	return len(l.in) == 0
 }
 
 func (l *packet) IsQueued() bool {
@@ -119,6 +156,18 @@ func (l *packet) String() string {
 	return builder.String()
 }
 
+func (l *packet) ShouldReply(t *testing.T, matchers ...ReplyMatcher) *packet {
+	AssertReplies(t, l.replies, matchers...)
+	return l
+}
+
+func (l *packet) ShouldNotReply(t *testing.T) *packet {
+	if len(l.replies) > 0 {
+		t.Errorf("expected no replies instead received %d", len(l.replies))
+	}
+	return l
+}
+
 func Dump(events ...*packet) {
 	for _, event := range events {
 		fmt.Println(event.String())
@@ -132,25 +181,8 @@ func RepliesOf(events []*packet) (out []api.CommandReply) {
 	return
 }
 
-type requestGroup struct {
-	requests []*command
-	in       []byte
-	out      []byte
-
-	replyCounter int
-
-	chResponse chan interface{}
-}
-
-type command struct {
-	command api.Command
-	request []byte
-	reply   api.CommandReply
-	replies []api.CommandReply
-
-	chResponse chan api.CommandReply
-}
-
+// A mock event-loop connection.
+// It mocks the event-loop by simulating it on a channel.
 type mockEvConn struct {
 	evio.Conn
 
@@ -159,46 +191,75 @@ type mockEvConn struct {
 	sync.Mutex
 	wg     sync.WaitGroup
 	conn   *server.CmdConn
-	onData func(in []byte) (out []byte, action evio.Action)
 
 	closed bool
 	seq    int
-	queue  []*requestGroup
 
-	packets []*packet
-	replies []Reply
+	packets      []*packet
+	packetIndex  int
+	commands     []Command
+	commandCount int
+	replies      []Reply
+	replyIndex   int
 
-	replyIndex int
-	pending    []*command
+	wakeIndex int
+	wakes     []*packet
 
 	eventLoopCh chan interface{}
 
 	dataCh  chan *packet
 	replyCh chan api.CommandReply
-	//sendCh chan *requestGroup
-	//recvCh chan *command
-
-	reader *api.ReplyReader
-
-	requestCount int
+	wakeCh  chan *packet
 }
 
-func (c *mockEvConn) SendPacket(commands ...Command) *requestGroup {
-	group := &requestGroup{
-		chResponse: make(chan interface{}, 1),
+func (c *mockEvConn) Send(commands ...Command) *packet {
+	c.commandCount += len(commands)
+
+	packet := &packet{
+		conn: c,
+		ch:   make(chan *packet, 1),
 	}
-	c.requestCount += len(commands)
+	packet.requests = append(packet.requests, commands...)
+	c.commands = append(c.commands, commands...)
 	for _, cm := range commands {
-		request := &command{
-			command: cm,
-			request: cm.Marshal(nil),
-		}
-		group.requests = append(group.requests, request)
-		group.in = append(group.in, request.request...)
+		packet.in = cm.Marshal(packet.in)
 	}
 
-	c.eventLoopCh <- group
-	return group
+	c.eventLoopCh <- packet
+	packet.Wait()
+	return packet
+}
+
+func (c *mockEvConn) Packets() []*packet {
+	c.Lock()
+	defer c.Unlock()
+
+	var packets []*packet
+	return append(packets, c.packets...)
+}
+
+func (c *mockEvConn) Wakes() []*packet {
+	c.Lock()
+	defer c.Unlock()
+
+	var packets []*packet
+	return append(packets, c.wakes...)
+}
+
+func (c *mockEvConn) Replies() []Reply {
+	c.Lock()
+	defer c.Unlock()
+
+	var replies []Reply
+	return append(replies, c.replies...)
+}
+
+func (c *mockEvConn) Commands() []Command {
+	c.Lock()
+	defer c.Unlock()
+
+	var commands []Command
+	return append(commands, c.commands...)
 }
 
 func (c *mockEvConn) WaitForPackets(begin, count int, timeout time.Duration) ([]*packet, error) {
@@ -233,7 +294,7 @@ func (c *mockEvConn) WaitForPackets(begin, count int, timeout time.Duration) ([]
 	}
 }
 
-func (c *mockEvConn) WaitForReplies(begin, count int, timeout time.Duration) ([]api.CommandReply, error) {
+func (c *mockEvConn) WaitForReplies(begin, count int, timeout time.Duration) ([]Reply, error) {
 	c.Lock()
 	if len(c.replies) >= begin+count {
 		s := c.replies[begin : begin+count]
@@ -265,6 +326,91 @@ func (c *mockEvConn) WaitForReplies(begin, count int, timeout time.Duration) ([]
 	}
 }
 
+func (c *mockEvConn) WaitForWakePackets(begin, count int, timeout time.Duration) ([]*packet, error) {
+	c.Lock()
+	if len(c.wakes) >= begin+count {
+		s := c.wakes[begin : begin+count]
+		c.Unlock()
+		return s, nil
+	}
+	c.Unlock()
+	for {
+		select {
+		case <-c.dataCh:
+			c.Lock()
+			if len(c.wakes) >= begin+count {
+				s := c.wakes[begin : begin+count]
+				c.Unlock()
+				return s, nil
+			}
+			c.Unlock()
+
+		case <-time.After(timeout):
+			var r []*packet
+			c.Lock()
+			l := len(c.wakes)
+			if l > 0 {
+				r = c.wakes[:l]
+			}
+			c.Unlock()
+			return r, ErrTimeout
+		}
+	}
+}
+
+func (c *mockEvConn) Packet(t *testing.T) *packet {
+	packets, err := c.WaitForPackets(c.packetIndex, 1, defaultTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packets) == 0 {
+		return nil
+	} else {
+		return packets[0]
+	}
+}
+
+func (c *mockEvConn) Expect(t *testing.T, matchers ...ReplyMatcher) {
+	c.ExpectTimeout(t, defaultTimeout, matchers...)
+}
+
+func (c *mockEvConn) ExpectTimeout(t *testing.T, timeout time.Duration, matchers ...ReplyMatcher) {
+	replies, err := c.WaitForReplies(c.replyIndex, len(matchers), timeout)
+	c.replyIndex += len(replies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	AssertReplies(t, replies, matchers...)
+}
+
+func (c *mockEvConn) ShouldWakeWithin(t *testing.T, timeout time.Duration) *packet {
+	packets, err := c.WaitForWakePackets(c.wakeIndex, 1, timeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packets) == 0 {
+		return nil
+	} else {
+		c.wakeIndex++
+		return packets[0]
+	}
+}
+
+func (c *mockEvConn) ShouldCountReplies(t *testing.T, numberOfReplies int) *mockEvConn {
+	c.Lock()
+	count := len(c.replies)
+	c.Unlock()
+
+	if count != numberOfReplies {
+		t.Errorf("expect reply count %d does not match actual %d", numberOfReplies, count)
+	}
+	return c
+}
+
+func (c *mockEvConn) DumpPackets() {
+	Dump(c.Packets()...)
+}
+
 type closeMsg struct{}
 
 func (c *mockEvConn) start() {
@@ -273,7 +419,6 @@ func (c *mockEvConn) start() {
 	go func() {
 		defer c.wg.Done()
 
-	Loop:
 		for {
 			select {
 
@@ -286,122 +431,98 @@ func (c *mockEvConn) start() {
 				}
 				switch msg := event.(type) {
 				case *closeMsg:
-					if len(c.pending) == 0 {
-						close(c.eventLoopCh)
+					//if len(c.pending) == 0 {
+					c.closed = true
+					//close(c.eventLoopCh)
+					return
+					//}
+
+				case *packet:
+					if c.closed {
+						c.finishLoop(msg)
 						return
 					}
 
-				case *packet:
 					// Set sequence
 					msg.sequence = c.seq
 					c.seq++
+
 					// event-loop pass
 					msg.out, msg.action = c.conn.OnData(msg.in)
 
-					c.afterLoopRun(msg)
-
-					if c.closed {
-						close(c.eventLoopCh)
-						return
-					}
-
-				case *requestGroup:
-					if len(msg.requests) == 0 {
-						continue Loop
-					}
-
-					var in []byte
-					for _, r := range msg.requests {
-						in = append(in, r.request...)
-					}
-
-					c.queue = append(c.queue, msg)
-
-					// event-loop pass
-					out, action := c.conn.OnData(in)
-
-					// create a loop event
-					event := &packet{
-						sequence: c.seq,
-						in:       in,
-						out:      out,
-						action:   action,
-						requests: msg.requests,
-					}
-					c.seq++
-
-					// handle loop event
-					c.afterLoopRun(event)
-
-					if c.closed {
-						close(c.eventLoopCh)
-						return
-					}
+					// finish
+					c.finishLoop(msg)
 				}
 			}
 		}
 	}()
-
-	// recv
-	//c.wg.Add(1)
-	//go func() {
-	//	defer c.wg.Done()
-	//
-	//	for {
-	//		select {}
-	//	}
-	//}()
 }
 
-func (c *mockEvConn) afterLoopRun(data *packet) {
-	// Create a reply reader
-	c.reader = api.NewReplyReader(data.out)
-	//c.reader.Reset(data.out)
+func (c *mockEvConn) finishLoop(p *packet) {
+	p.conn = c
+
+	// Let's read the replies and finish up the event-loop pass
+	reader := api.NewReplyReader(p.out)
 
 	var (
 		reply api.CommandReply
 		err   error
 	)
 
-	if len(data.out) > 0 {
-		reply, err = c.reader.Next()
+	if len(p.out) > 0 {
+		reply, err = reader.Next()
 
 		for err == nil {
-			data.replies = append(data.replies, reply)
-
+			// Add reply to packet
+			p.replies = append(p.replies, reply)
+			// Add reply to the connection
 			c.Lock()
 			c.replies = append(c.replies, reply)
 			c.Unlock()
 
+			// Notify of new reply
 			c.replyCh <- reply
 
-			reply, err = c.reader.Next()
+			reply, err = reader.Next()
 		}
 	}
 
+	// Add packet to connection
 	c.Lock()
-	c.packets = append(c.packets, data)
+	if len(p.in) == 0 {
+		c.wakes = append(c.wakes, p)
+	}
+	c.packets = append(c.packets, p)
 	c.Unlock()
+	// Notify of new packet
+	c.dataCh <- p
 
-	c.dataCh <- data
+	if len(p.in) == 0 {
+		c.wakeCh <- p
+	}
+
+	p.ch <- p
+	close(p.ch)
+
+	if dumpPackets {
+		Dump(p)
+	}
 
 	if err != nil && err != io.EOF {
 		panic(err)
 	}
-
-	// Parse responses
-	//fmt.Println(data.IsSimpleString())
 }
 
 func (c *mockEvConn) close() {
 	c.eventLoopCh <- &closeMsg{}
 	c.cancel()
-	c.wg.Wait()
+	close(c.eventLoopCh)
+	//c.wg.Wait()
 }
 
 // Wakes the connection up if necessary.
 func (c *mockEvConn) Wake() error {
-	c.eventLoopCh <- &packet{}
+	c.eventLoopCh <- &packet{conn: c}
 	return nil
 }
 
@@ -438,10 +559,10 @@ type ReplyMatcher interface {
 
 var (
 	OfSimpleString = ofSimpleString{}
-	OfBulk         = ofBulkString{}
+	WithBulk       = ofBulkString{}
 	OfInt          = ofInt{}
 	OfArray        = ofArray{}
-	IsOK           = isOK{}
+	WithOK         = isOK{}
 	IsQueued       = isQueued{}
 )
 //
@@ -490,10 +611,10 @@ func (i ofBulkString) Test(reply Reply) bool {
 	return false
 }
 func (i ofBulkString) String() string {
-	return "OfBulk"
+	return "WithBulk"
 }
 
-func IsBulk(value string) ReplyMatcher {
+func BulkValue(value string) ReplyMatcher {
 	return isBulkString{value}
 }
 

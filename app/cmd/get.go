@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/genzai-io/sliced/common/redcon"
 	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/common/redcon"
 )
 
 func init() { api.Register(&Get{}) }

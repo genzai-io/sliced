@@ -20,7 +20,7 @@ type errProtocol struct {
 }
 
 func (err *errProtocol) Error() string {
-	return "Protocol error: " + err.msg
+	return "PROTO " + err.msg
 }
 
 // Kind is the kind of command
