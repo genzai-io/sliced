@@ -611,7 +611,7 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 
 	out := redcon.AppendOK(nil)
 	out = redcon.AppendBulk(out, data)
-	return cmd.Bytes(out)
+	return api.Bulk(out)
 }
 
 //func (t *RESPTransport) handleInstallSnapshot(conn redcon.DetachedConn, arg []byte) {

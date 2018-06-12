@@ -93,7 +93,7 @@ func (e *CmdServer) serve() {
 		// This type of Conn can be upgraded to various other types
 		co := &CmdConn{
 			Ev: c,
-			Out: &emptyBuffer,
+			//Out: &emptyBuffer,
 		}
 
 		// Let's reuse the read buffer

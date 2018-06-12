@@ -1,3 +1,9 @@
+// Testing CmdConn requires simulating the event-loop. That's what the structures
+// in this file do. It mocks an evio.Conn and the evio event-loop. Then, many high
+// level helpers, a network packet abstraction and a RESP protocol reply parser to
+// parse the network packets as a series of RESP replies.
+//
+//
 package server_test
 
 import (
@@ -21,7 +27,7 @@ var (
 
 	defaultTimeout = time.Second * 5
 
-	dumpPackets = true
+	dumpPackets = false
 )
 
 type Command = api.Command
@@ -87,10 +93,10 @@ type packet struct {
 
 func (l *packet) Wait() *packet {
 	select {
-	case p := <-l.ch:
+	case p, _ := <-l.ch:
 		return p
 
-	case <-time.After(time.Second * 10):
+	case <-time.After(time.Second * 120):
 		panic("timed-out waiting for packet")
 	}
 	return l
@@ -104,7 +110,7 @@ func (l *packet) IsWake() bool {
 	return len(l.in) == 0
 }
 
-func (l *packet) IsQueued() bool {
+func (l *packet) IsScheduled() bool {
 	return l.pending+len(l.requests) > len(l.replies)
 }
 
@@ -125,8 +131,8 @@ func (l *packet) String() string {
 			builder.WriteString("-------------------------------\n")
 			builder.WriteString(string(l.out))
 
-			if l.IsQueued() {
-				builder.WriteString(fmt.Sprintf("%d QUEUED\n", len(l.requests)-len(l.replies)))
+			if l.IsScheduled() {
+				builder.WriteString(fmt.Sprintf("%d SCHEDULED\n", len(l.requests)-len(l.replies)))
 			}
 
 			builder.WriteString("===============================\n\n")
@@ -139,14 +145,14 @@ func (l *packet) String() string {
 		builder.WriteString("-------------------------------\n")
 
 		if len(l.out) == 0 {
-			builder.WriteString(fmt.Sprintf("%d QUEUED\n", len(l.requests)-len(l.replies)))
+			builder.WriteString(fmt.Sprintf("%d SCHEDULED\n", len(l.requests)-len(l.replies)))
 			builder.WriteString("===============================\n\n")
 		} else {
 			builder.WriteString(fmt.Sprintf("%d RESPONSE(s) [%d bytes]\n", len(l.replies), len(l.out)))
 			builder.WriteString("-------------------------------\n")
 			builder.WriteString(string(l.out))
 
-			if l.IsQueued() {
+			if l.IsScheduled() {
 				builder.WriteString(fmt.Sprintf("%d QUEUED\n", len(l.requests)-len(l.replies)))
 			}
 			builder.WriteString("===============================\n\n")
@@ -154,6 +160,30 @@ func (l *packet) String() string {
 	}
 
 	return builder.String()
+}
+
+func (l *packet) ExpectOK(t *testing.T) *packet {
+	return l.ShouldReply(t, WithOK)
+}
+
+func (l *packet) ExpectQueued(t *testing.T) *packet {
+	return l.ShouldReply(t, WithQueued)
+}
+
+func (l *packet) ExpectBulk(t *testing.T) *packet {
+	return l.ShouldReply(t, WithBulk)
+}
+
+func (l *packet) ExpectArray(t *testing.T) *packet {
+	return l.ShouldReply(t, WithArray)
+}
+
+func (l *packet) ExpectError(t *testing.T) *packet {
+	return l.ShouldReply(t, WithError)
+}
+
+func (l *packet) ExpectEmpty(t *testing.T) *packet {
+	return l.ShouldNotReply(t)
 }
 
 func (l *packet) ShouldReply(t *testing.T, matchers ...ReplyMatcher) *packet {
@@ -168,13 +198,15 @@ func (l *packet) ShouldNotReply(t *testing.T) *packet {
 	return l
 }
 
+// Dumps a human readable console representation of each simulated network packet.
 func Dump(events ...*packet) {
 	for _, event := range events {
 		fmt.Println(event.String())
 	}
 }
 
-func RepliesOf(events []*packet) (out []api.CommandReply) {
+// Gathers all replies in order from all supplied packets
+func GatherReplies(events []*packet) (out []api.CommandReply) {
 	for _, event := range events {
 		out = append(out, event.replies...)
 	}
@@ -182,7 +214,7 @@ func RepliesOf(events []*packet) (out []api.CommandReply) {
 }
 
 // A mock event-loop connection.
-// It mocks the event-loop by simulating it on a channel.
+// It mocks the event-loop by simulating it on a channel and feeding it "packets".
 type mockEvConn struct {
 	evio.Conn
 
@@ -212,20 +244,37 @@ type mockEvConn struct {
 	wakeCh  chan *packet
 }
 
+// Send "x" commands as a single network "packet".
+// It will wait for the packet to go through a single
+// event-loop pass. When this returns, the packet may
+// or may not have any data "Out" data with RESP replies
+// automatically parsed.
 func (c *mockEvConn) Send(commands ...Command) *packet {
+	c.Lock()
+
 	c.commandCount += len(commands)
 
 	packet := &packet{
-		conn: c,
-		ch:   make(chan *packet, 1),
+		sequence: c.seq,
+		conn:     c,
+		ch:       make(chan *packet, 1),
 	}
+	c.seq++
+
 	packet.requests = append(packet.requests, commands...)
 	c.commands = append(c.commands, commands...)
 	for _, cm := range commands {
 		packet.in = cm.Marshal(packet.in)
 	}
 
-	c.eventLoopCh <- packet
+	c.Unlock()
+
+	select {
+	case c.eventLoopCh <- packet:
+	default:
+		panic("send eventLoopCh failed")
+	}
+
 	packet.Wait()
 	return packet
 }
@@ -260,6 +309,14 @@ func (c *mockEvConn) Commands() []Command {
 
 	var commands []Command
 	return append(commands, c.commands...)
+}
+
+func (c *mockEvConn) AllReplies(t *testing.T) ([]Reply, error) {
+	replies, err := c.WaitForReplies(0, c.commandCount, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return replies, err
 }
 
 func (c *mockEvConn) WaitForPackets(begin, count int, timeout time.Duration) ([]*packet, error) {
@@ -443,10 +500,6 @@ func (c *mockEvConn) start() {
 						return
 					}
 
-					// Set sequence
-					msg.sequence = c.seq
-					c.seq++
-
 					// event-loop pass
 					msg.out, msg.action = c.conn.OnData(msg.in)
 
@@ -475,13 +528,14 @@ func (c *mockEvConn) finishLoop(p *packet) {
 		for err == nil {
 			// Add reply to packet
 			p.replies = append(p.replies, reply)
+
 			// Add reply to the connection
-			c.Lock()
-			c.replies = append(c.replies, reply)
-			c.Unlock()
+			//c.Lock()
+			//c.replies = append(c.replies, reply)
+			//c.Unlock()
 
 			// Notify of new reply
-			c.replyCh <- reply
+			//c.replyCh <- reply
 
 			reply, err = reader.Next()
 		}
@@ -489,11 +543,13 @@ func (c *mockEvConn) finishLoop(p *packet) {
 
 	// Add packet to connection
 	c.Lock()
+	c.replies = append(c.replies, p.replies...)
 	if len(p.in) == 0 {
 		c.wakes = append(c.wakes, p)
 	}
 	c.packets = append(c.packets, p)
 	c.Unlock()
+
 	// Notify of new packet
 	c.dataCh <- p
 
@@ -502,7 +558,10 @@ func (c *mockEvConn) finishLoop(p *packet) {
 	}
 
 	p.ch <- p
-	close(p.ch)
+
+	for _, reply := range p.replies {
+		c.replyCh <- reply
+	}
 
 	if dumpPackets {
 		Dump(p)
@@ -520,9 +579,22 @@ func (c *mockEvConn) close() {
 	//c.wg.Wait()
 }
 
+///////////////////////////////////////////////////////
+// evio.Conn Interface Implementation
+///////////////////////////////////////////////////////
+
 // Wakes the connection up if necessary.
 func (c *mockEvConn) Wake() error {
-	c.eventLoopCh <- &packet{conn: c}
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println(r)
+		}
+	}()
+	c.Lock()
+	seq := c.seq
+	c.seq++
+	c.Unlock()
+	c.eventLoopCh <- &packet{conn: c, sequence: seq, ch: make(chan *packet, 1)}
 	return nil
 }
 
@@ -551,6 +623,10 @@ func (c *mockEvConn) RemoteAddr() net.Addr {
 	return nil
 }
 
+///////////////////////////////////////////////////////
+// api.CommandReply assertion
+///////////////////////////////////////////////////////
+
 type ReplyMatcher interface {
 	Test(reply Reply) bool
 
@@ -558,13 +634,48 @@ type ReplyMatcher interface {
 }
 
 var (
-	OfSimpleString = ofSimpleString{}
-	WithBulk       = ofBulkString{}
-	OfInt          = ofInt{}
-	OfArray        = ofArray{}
-	WithOK         = isOK{}
-	IsQueued       = isQueued{}
+	WithSimpleString = ofSimpleString{}
+	WithBulk         = ofBulkString{}
+	WithInt          = ofInt{}
+	WithArray        = ofArray{}
+	WithOK           = isOK{}
+	WithQueued       = isQueued{}
+	WithError        = ofErr{}
 )
+
+//
+type ofErr struct{}
+
+func (i ofErr) Test(reply Reply) bool {
+	switch reply.(type) {
+	case api.Err:
+		return true
+	}
+	return false
+}
+func (i ofErr) String() string {
+	return "WithError"
+}
+
+func IsErr(value string) ReplyMatcher {
+	return isSimpleString{value}
+}
+
+type isErr struct {
+	value string
+}
+
+func (i isErr) Test(reply Reply) bool {
+	switch v := reply.(type) {
+	case api.Err:
+		return string(v) == i.value
+	}
+	return false
+}
+func (i isErr) String() string {
+	return fmt.Sprintf("Err(\"%s\")", i.value)
+}
+
 //
 type ofSimpleString struct{}
 
@@ -576,7 +687,7 @@ func (i ofSimpleString) Test(reply Reply) bool {
 	return false
 }
 func (i ofSimpleString) String() string {
-	return "OfSimpleString"
+	return "WithSimpleString"
 }
 
 func IsSimpleString(value string) ReplyMatcher {
@@ -712,8 +823,8 @@ func (i ofArray) String() string {
 	return "ofArray"
 }
 
-func IsArray(value api.Array) ReplyMatcher {
-	return IsArray(value)
+func ArrayValue(value api.Array) ReplyMatcher {
+	return ArrayValue(value)
 }
 
 //

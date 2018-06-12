@@ -24,6 +24,8 @@ func ErrWake(err error) error {
 var ErrBufferFilled = errors.New("buffer filled")
 var maxRequestBuffer = 65536
 
+var BeginBufferSize = 64
+
 var emptyBuffer []byte
 var clearBuffer = unsafe.Pointer(&emptyBuffer)
 
@@ -41,8 +43,8 @@ type connStats struct {
 var emptyList = &[]cmdGroup{}
 
 const (
-	idleState       int32 = 0
-	dispatchedState int32 = 1
+	loopOwner   int32 = 0
+	workerOwner int32 = 1
 )
 
 // Non-Blocking
@@ -86,13 +88,13 @@ type CmdConn struct {
 	done bool      // flag to signal it's done
 
 	// Buffers
-	In  []byte  // in/ingress or "read" buffer
-	Out *[]byte // out/egress or "write" buffer
+	In  []byte // in/ingress or "read" buffer
+	Out []byte // out/egress or "write" buffer
 
-	backlog     *[]cmdGroup
-	worker      *[]cmdGroup
+	backlog     []*cmdGroup
+	worker      []*cmdGroup
 	workerState int32
-	next        cmdGroup
+	next        *cmdGroup
 
 	// For "multi" transactions this is registry of vars of named results.
 	// $x = GET key
@@ -107,10 +109,10 @@ type CmdConn struct {
 
 func NewConn(ev evio.Conn) *CmdConn {
 	conn := &CmdConn{
-		Ev:      ev,
-		Out:     &emptyBuffer,
-		backlog: emptyList,
-		worker:  emptyList,
+		Ev: ev,
+		//Out:     &emptyBuffer,
+		//backlog: emptyList,
+		//worker:  emptyList,
 	}
 	return conn
 }
@@ -191,20 +193,29 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 	var action = c.Action
 
 	// Snapshot current working mode
-	workerState := atomic.LoadInt32(&c.workerState)
+	owner := atomic.LoadInt32(&c.workerState)
 
 	// Flush write atomically
-	out = c.swapOut(&emptyBuffer)
-	//if len(o) > 0 {
-	//	out = append(out, o...)
-	//}
+	//out = c.swapOut(&emptyBuffer)
+	//c.Lock()
+	//out = c.Out
+	//out = nil
+	//c.Unlock()
+
+	// Flush worker writes if necessary
+	out = c.Out
+	c.Out = nil
+
+	if c.next == nil {
+		c.next = &cmdGroup{}
+	}
 
 	if action == evio.Close {
 		return out, action
 	}
 
 	// Load the backlog
-	backlog := c.loadBacklog()
+	//backlog := c.loadBacklog()
 
 	data := in
 	if len(in) == 0 {
@@ -213,7 +224,7 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 
 		// Is there nothing to parse?
 		if len(c.In) == 0 {
-			//if workerState > 0 {
+			//if owner > 0 {
 			//	return out, action
 			//}
 
@@ -281,10 +292,10 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 						goto Parse
 					} else {
 						if c.next.size() > 0 {
-							backlog = append(backlog, c.next)
+							c.backlog = append(c.backlog, c.next)
+							c.next = &cmdGroup{}
 						}
 
-						c.next = cmdGroup{}
 						c.next.isMulti = true
 						c.next.qidx = -1
 						goto Parse
@@ -292,21 +303,9 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 
 				case "exec":
 					if c.next.isMulti {
-						if c.next.size() > 0 {
-
-						}
-						backlog = append(backlog, c.next)
-						c.next = cmdGroup{}
+						c.backlog = append(c.backlog, c.next)
+						c.next = &cmdGroup{}
 						goto Parse
-
-						//if workerState == 0 {
-						//	out, workerState = c.emptyFromLoop(out)
-						//} else {
-						//	// Did we run out of space in the backlog?
-						//	c.backlog.push(c.next)
-						//
-						//	goto Parse
-						//}
 					} else {
 						c.next.list = append(c.next.list, api.Err("ERR exec not expected"))
 						goto Parse
@@ -314,7 +313,7 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 
 				case "discard":
 					if c.next.isMulti {
-						c.next = cmdGroup{}
+						c.next = &cmdGroup{}
 						c.next.list = append(c.next.list, api.Ok{})
 						goto Parse
 					} else {
@@ -351,28 +350,33 @@ AfterParse:
 // Should push next?
 	if c.next.size() > 0 {
 		if !c.next.isMulti {
-			backlog = append(backlog, c.next)
-			c.next.clear()
+			// Optimize for common scenarios.
+			// Let's try to save a slice append.
+			// Benchmarking revealed around 8-10% throughput increase under heavy load,
+			// so that's pretty nifty.
+			if !c.next.isWorker && len(c.backlog) == 0 {
+				out = c.execute(out, c.next)
+				c.next.clear()
+			} else {
+				c.backlog = append(c.backlog, c.next)
+				c.next = &cmdGroup{}
+			}
 		}
 	}
 
-	if workerState == dispatchedState {
-		//fmt.Println(backlog)
-	}
-
-	if len(backlog) > 0 {
-		if workerState == idleState {
+	if owner == loopOwner {
+		if len(c.backlog) > 0 {
 			var (
-				group cmdGroup
+				group *cmdGroup
 				index int
 				ok    bool
 			)
 
 		loop:
-			for index, group = range backlog {
+			for index, group = range c.backlog {
 				if group.isWorker {
 					if group.isMulti {
-						out, ok = c.sendQueued(out, &group)
+						out, ok = c.sendQueued(out, group)
 						if !ok {
 							goto loop
 						}
@@ -396,31 +400,44 @@ AfterParse:
 						}
 					}
 
-					workerState = dispatchedState
-					backlog = backlog[index:]
+					owner = workerOwner
+					if index > 0 {
+						c.backlog = c.backlog[index:]
+					}
 					break loop
 				} else {
 					if group.isMulti {
-						out, ok = c.sendQueued(out, &group)
+						out, ok = c.sendQueued(out, group)
 						if !ok {
 							goto loop
 						}
 					}
 
 					// Run all the commands
-					out = c.execute(out, &group)
+					out = c.execute(out, group)
 				}
 			}
 
-			if workerState == dispatchedState {
-				c.swapWorker(&backlog)
-				atomic.StoreInt32(&c.workerState, dispatchedState)
-				//c.dispatch()
+			if owner == workerOwner {
+				// transfer backlog to worker
+				c.worker = append(c.worker, c.backlog...)
+				// Clear the backlog
+				c.backlog = c.backlog[:0]
+				// Move to dispatched owner
+				atomic.StoreInt32(&c.workerState, workerOwner)
 				Workers.Dispatch(c)
+			} else {
+				// Clear the backlog
+				c.backlog = c.backlog[:0]
+
+				if c.next.isMulti {
+					out, _ = c.sendQueued(out, c.next)
+				}
 			}
 		} else {
-			// Append to the backlog
-			c.storeBacklog(&backlog)
+			if c.next.isMulti {
+				out, _ = c.sendQueued(out, c.next)
+			}
 		}
 	}
 
@@ -437,12 +454,6 @@ AfterParse:
 
 	// Return
 	return out, action
-}
-
-func (c *CmdConn) dispatch() {
-	//if atomic.CompareAndSwapInt32(&c.workerState, 0, 1) {
-	Workers.Dispatch(c)
-	//}
 }
 
 func (c *CmdConn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
@@ -512,55 +523,45 @@ func (c *CmdConn) wake() {
 // Worker run
 func (c *CmdConn) Run() {
 	// Atomically get and clear the work list
-	commands := c.swapWorker(_EmptyCommands)
-	if commands == nil || len(commands) == 0 {
-		c.wake()
-		return
-	}
+	//groups := c.swapWorker(_EmptyCommands)
+	//if groups == nil || len(groups) == 0 {
+	//	c.wake()
+	//	return
+	//}
 
 	// atomic writes
-	out := c.swapOut(&emptyBuffer)
+	//out := c.swapOut(&emptyBuffer)
+
+	out := make([]byte, 0, BeginBufferSize)
+	groups := c.worker
+	c.worker = c.worker[:0]
 
 loop:
 // Since concurrent writes may happen we will cap the number of "pops" to
 // the snapshot above. Only 1 goroutine "pops" at a time and only the event-loop "pushes".
-// Which means the event-loop is in charge of parsing new commands and adding them to the backlog.
+// Which means the event-loop is in charge of parsing new groups and adding them to the backlog.
 // The worker merely processes what it can and atomically flushes "write" buffer for use
 // after the event-loop wakes this descriptor up.
-	for _, item := range commands {
-		if item.size() == 0 {
+	for _, group := range groups {
+		if group.size() == 0 {
 			continue loop
 		}
 
-		if item.isMulti {
-			// Send Queued responses first
-			if item.qidx < int32(item.size()) {
-				c.sendQueued(out, &item)
-			}
-			// Run all the commands
-			for _, command := range item.list {
-				out = c.AppendCommand(out, command)
-			}
-		} else {
-			// Run all the commands
-			for _, command := range item.list {
-				out = c.AppendCommand(out, command)
-			}
-		}
-
-		item.clear()
+		out = c.execute(out, group)
+		group.clear()
 	}
 
 	if out == nil {
-		out = emptyBuffer
+		//out = emptyBuffer
 	}
 
 	// Atomically set write buffer
-	c.swapOut(&out)
-	//atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.Out)), unsafe.Pointer(&out))
+	//c.swapOut(&out)
+
+	c.Out = out
 
 	// Flip into non working mode
-	atomic.StoreInt32(&c.workerState, idleState)
+	atomic.StoreInt32(&c.workerState, loopOwner)
 
 	// Wake up the loop
 	c.wake()
@@ -646,65 +647,3 @@ func (c *cmdGroup) clear() {
 }
 
 func (c *cmdGroup) size() int32 { return int32(len(c.list)) }
-
-//func (c cmdGroup) add(command api.Command) {
-//	c.list = append(c.list, command)
-//}
-
-//var emptyCmdGroup = cmdGroup{}
-//
-//const maxBacklog = 3
-//
-////const maxBacklogIdx = 1
-//
-//var errFilled = errors.New("backlog filled")
-//
-//// Lock free circular list
-//// It supports 1 concurrent reader and 1 concurrent writer.
-//type backlog struct {
-//	head uint32
-//	tail uint32
-//	size int32
-//	list []cmdGroup
-//}
-//
-//func (b *backlog) isFilled() bool {
-//	return atomic.LoadInt32(&b.size) == maxBacklog
-//}
-//
-//func (b *backlog) push(group cmdGroup) error {
-//	//if atomic.LoadInt32(&b.size) == maxBacklog {
-//	//	return errFilled
-//	//}
-//
-//	//b.list[b.tail%maxBacklog] = group
-//	b.list = append(b.list, group)
-//	atomic.AddUint32(&b.tail, 1)
-//	// Increase size last
-//	atomic.AddInt32(&b.size, 1)
-//	return nil
-//}
-//
-//func (b *backlog) pop() (*cmdGroup, bool) {
-//	if atomic.LoadInt32(&b.size) == 0 {
-//		return &emptyCmdGroup, false
-//	}
-//
-//	//val := &b.list[b.head%maxBacklog]
-//	val := b.list[0]
-//	b.list = b.list[1:]
-//	// Decrement size first
-//	atomic.AddInt32(&b.size, -1)
-//	// Increment head
-//	//atomic.AddUint32(&b.head, 1)
-//
-//	return &val, true
-//}
-//
-//func (b *backlog) peek() (*cmdGroup, bool) {
-//	if atomic.LoadInt32(&b.size) == 0 {
-//		return &emptyCmdGroup, false
-//	}
-//	return &b.list[0], true
-//	//return &b.list[b.head%maxBacklog], false
-//}
