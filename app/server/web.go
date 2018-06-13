@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 )
 
+// Provides HTTP web services
 type Web struct {
 	service.BaseService
 	*grpcweb.WrappedGrpcServer

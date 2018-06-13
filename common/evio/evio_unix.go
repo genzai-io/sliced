@@ -7,6 +7,7 @@
 package evio
 
 import (
+	"errors"
 	"net"
 	"os"
 	"runtime"
@@ -14,11 +15,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"errors"
 
-	"github.com/kavu/go_reuseport"
-	"github.com/genzai-io/sliced/common/evio/internal"
 	"math/rand"
+
+	"github.com/genzai-io/sliced/common/evio/internal"
+	"github.com/kavu/go_reuseport"
 )
 
 type conn struct {
@@ -38,6 +39,7 @@ type conn struct {
 	remoteAddr net.Addr
 }
 
+func (c *conn) LoopIndex() int             { return c.loopidx }
 func (c *conn) Context() interface{}       { return c.ctx }
 func (c *conn) SetContext(ctx interface{}) { c.ctx = ctx }
 func (c *conn) AddrIndex() int             { return c.addrIndex }
@@ -300,7 +302,7 @@ func loopNote(s *server, l *loop, note interface{}) error {
 	var err error
 	switch v := note.(type) {
 	case time.Duration:
-		delay, action := s.events.Tick()
+		delay, action := s.events.Tick(l.idx)
 		switch action {
 		case None:
 		case Shutdown:

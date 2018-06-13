@@ -8,12 +8,12 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
-	"time"
 	"syscall"
-	"os"
+	"time"
 )
 
 var errClosing = errors.New("closing")
@@ -98,6 +98,7 @@ type stdudpconn struct {
 	in         []byte
 }
 
+func (c *stdudpconn) LoopIndex() int                { return -1 }
 func (c *stdudpconn) Context() interface{}       { return nil }
 func (c *stdudpconn) SetContext(ctx interface{}) {}
 func (c *stdudpconn) AddrIndex() int             { return c.addrIndex }
@@ -123,6 +124,7 @@ type stdconn struct {
 	done       int32       // 0: attached, 1: closed, 2: detached
 }
 
+func (c *stdconn) LoopIndex() int             { return c.loop.idx }
 func (c *stdconn) Context() interface{}       { return c.ctx }
 func (c *stdconn) SetContext(ctx interface{}) { c.ctx = ctx }
 func (c *stdconn) AddrIndex() int             { return c.addrIndex }
@@ -324,7 +326,7 @@ func stdloopRun(s *stdserver, l *stdloop) {
 	for {
 		select {
 		case <-tick:
-			delay, action := s.events.Tick()
+			delay, action := s.events.Tick(l.idx)
 			switch action {
 			case Shutdown:
 				err = errClosing

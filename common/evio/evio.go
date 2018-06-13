@@ -57,6 +57,7 @@ type Server struct {
 
 // Conn is an evio connection.
 type Conn interface {
+	LoopIndex() int
 	// Context returns a user-defined context.
 	Context() interface{}
 	// SetContext sets a user-defined context.
@@ -135,7 +136,7 @@ type Events struct {
 	Data func(c Conn, in []byte) (out []byte, action Action)
 	// Tick fires immediately after the server starts and will fire again
 	// following the duration specified by the delay return value.
-	Tick func() (delay time.Duration, action Action)
+	Tick func(loopIndex int) (delay time.Duration, action Action)
 }
 
 // Serve starts handling events for the specified addresses.

@@ -1,12 +1,47 @@
 package server_test
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
+	"github.com/genzai-io/sliced/common/fastlane"
 )
+
+func TestFastlane(t *testing.T) {
+	lane := fastlane.Chan{}
+	lp := &lane
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			msg := lp.Recv()
+			if msg == nil {
+				fmt.Println("Closing")
+				return
+			} else {
+				time.Sleep(250 * time.Millisecond)
+				fmt.Println(msg)
+			}
+		}
+	}()
+
+	for i := 0; i < 100; i++ {
+		//lane.Send(fmt.Sprintf("Hi %d", i))
+		//time.Sleep(time.Millisecond * 250)
+	}
+
+	fmt.Println("Finished sending")
+	lane.Send(nil)
+
+	wg.Wait()
+}
 
 //
 func TestCmdConn_MultipleWorkers(t *testing.T) {
@@ -60,20 +95,23 @@ func TestCmdConn_MultipleWorkers(t *testing.T) {
 //
 func TestCmdConn_MultipleWorkers2(t *testing.T) {
 	//defaultTimeout = time.Hour
-	//dumpPackets = true
+	dumpPackets = false
 
 	conn := newMockConn()
 	defer conn.close()
 
-	for i := 0; i < 20; i++ {
-		//conn.
-		//	Send(&cmd.Get{Key: "hi"})
+	sleepTime := 10
+	iterations := 25
+
+	for i := 0; i < iterations; i++ {
 		conn.
-			Send(&cmd.Sleep{Millis: 10})
+			Send(&cmd.Get{Key: "hi"})
+		conn.
+			Send(&cmd.Sleep{Millis: int64(sleepTime)})
 	}
 
 	// Simulate enough time to finish all commands.
-	time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * time.Duration(sleepTime) * time.Duration(iterations) * 2)
 
 	// Should received all replies
 	conn.ShouldCountReplies(t, len(conn.Commands()))
@@ -125,7 +163,7 @@ func TestCmdConn_MultiWorker(t *testing.T) {
 		ShouldNotReply(t)
 
 	// Simulate enough time to finish all commands.
-	time.Sleep(time.Millisecond * 1000)
+	time.Sleep(time.Millisecond * 100)
 
 	// Should received all replies
 	conn.ShouldCountReplies(t, len(conn.Commands()))

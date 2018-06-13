@@ -44,7 +44,7 @@ var (
 	GIT = ""
 
 	// App stuff
-	Name       = "moved"
+	Name       = "sliced"
 	VersionStr = "0.1.0-1"
 	Version    semver.Version
 
@@ -102,7 +102,7 @@ func init() {
 		panic(err)
 	}
 	UserHomeDir = usr.HomeDir
-	HomeDir = filepath.Join(usr.HomeDir, ".moved", "0")
+	HomeDir = filepath.Join(usr.HomeDir, ".sliced", "0")
 	DataDir = filepath.Join(HomeDir, "data")
 	StoreDir = filepath.Join(HomeDir, "store")
 	PIDName = "0"

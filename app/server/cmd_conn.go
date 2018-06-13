@@ -4,32 +4,29 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
+	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"strings"
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/common/evio"
+	"github.com/genzai-io/sliced/common/fastlane"
 	"github.com/genzai-io/sliced/common/redcon"
 )
 
-var maxCommandBacklog = 10000
+var (
+	ErrBufferFilled = errors.New("buffer filled")
+	ErrWake         = func(err error) error {
+		return fmt.Errorf("wake error: %s", err.Error())
+	}
 
-func ErrWake(err error) error {
-	return fmt.Errorf("wake: %s", err.Error())
-}
-
-var ErrBufferFilled = errors.New("buffer filled")
-var maxRequestBuffer = 65536
-
-var BeginBufferSize = 64
-
-var emptyBuffer []byte
-var clearBuffer = unsafe.Pointer(&emptyBuffer)
-
-var workerBuffer []byte
+	maxCommandBacklog = 10000
+	emptyBuffer       []byte
+	stopMsg           = &cmdGroup{}
+)
 
 type connStats struct {
 	wakes          uint64
@@ -39,8 +36,6 @@ type connStats struct {
 	ingress        uint64
 	egress         uint64
 }
-
-var emptyList = &[]cmdGroup{}
 
 const (
 	loopOwner   int32 = 0
@@ -56,10 +51,14 @@ const (
 // 2. Reply
 //
 // Great care goes into the lowest latency responses while guaranteeing there
-// no be no blocking when on the event-loop.
+// will be no blocking when on the event-loop. There are 2 distinct ownership
+// states.
+//
+// 1. Event-Loop - Event-loop may freely process commands and return it's output
+// 2. Worker - Processing of commands must take place in the background
 //
 // Worker (background) commands are supported and will be processed in the background which
-// will wake the event-loop up when there is data to write. More commands may
+// will wakes the event-loop up when there is data to write. More commands may
 // queue up concurrently while the worker is in progress. However, only 1 worker
 // may work at a time and once it buffers data to write then it transfers ownership
 // back to the event-loop. A custom Worker pool was created to handle Worker processing.
@@ -76,25 +75,22 @@ const (
 // same behavior to the Redis implementation. All commands between a MULTI and EXEC
 // command will happen all at once. If one of those commands is a worker then ALL will
 // be processed at once in the background.
-//
-//
 type CmdConn struct {
 	api.Context
 
-	mutex       uintptr
-	mutexMisses uint64
+	ID uint64
 
-	Ev   evio.Conn // Connection
+	ev   evio.Conn // evio Connection
 	done bool      // flag to signal it's done
 
-	// Buffers
-	In  []byte // in/ingress or "read" buffer
-	Out []byte // out/egress or "write" buffer
+	// Partial commands get saved here while waiting for more data
+	leftovers []byte
 
-	backlog     []*cmdGroup
-	worker      []*cmdGroup
-	workerState int32
-	next        *cmdGroup
+	// Determines where processing may take place
+	ownership int32
+	backlog   []*cmdGroup
+	next      *cmdGroup
+	worker    cmdConnWorker
 
 	// For "multi" transactions this is registry of vars of named results.
 	// $x = GET key
@@ -109,46 +105,15 @@ type CmdConn struct {
 
 func NewConn(ev evio.Conn) *CmdConn {
 	conn := &CmdConn{
-		Ev: ev,
-		//Out:     &emptyBuffer,
-		//backlog: emptyList,
-		//worker:  emptyList,
+		ev: ev,
 	}
+	conn.onData = conn.OnData
 	return conn
 }
 
-// Spin-lock
-// Only the properties are synchronized and not the command Handle() itself.
-// In addition, the Event Loop is inherently single-threaded so the only
-// potential race is from a background Worker happening in parallel with
-// an Event Loop call.
-func (c *CmdConn) Lock() {
-	for !atomic.CompareAndSwapUintptr(&c.mutex, 0, 1) {
-		atomic.AddUint64(&c.mutexMisses, 1)
-		runtime.Gosched()
-	}
-}
-
-// Spin-lock TryLock
-func (c *CmdConn) TryLock() bool {
-	if !atomic.CompareAndSwapUintptr(&c.mutex, 0, 1) {
-		atomic.AddUint64(&c.mutexMisses, 1)
-		return false
-	} else {
-		return true
-	}
-}
-
-// Spin-lock Unlock
-func (c *CmdConn) Unlock() {
-	atomic.StoreUintptr(&c.mutex, 0)
-}
-
 func (c *CmdConn) Detach() error {
-	c.Lock()
 	c.Action = evio.Detach
-	c.Unlock()
-	c.Ev.Wake()
+	c.ev.Wake()
 	return nil
 }
 
@@ -159,10 +124,8 @@ func (c *CmdConn) OnDetach(rwc io.ReadWriteCloser) {
 }
 
 func (c *CmdConn) Close() error {
-	c.Lock()
 	c.Action = evio.Close
-	conn := c.Ev
-	c.Unlock()
+	conn := c.ev
 
 	if conn != nil {
 		return conn.Wake()
@@ -171,40 +134,69 @@ func (c *CmdConn) Close() error {
 }
 
 func (c *CmdConn) OnClosed() {
-	c.Lock()
 	c.done = true
 	c.Action = evio.Close
-	c.Ev = nil
-	c.Unlock()
+	c.ev = nil
+	c.stopWorker()
 }
 
 func (c *CmdConn) Conn() evio.Conn {
-	return c.Ev
+	return c.ev
 }
 
 func (c *CmdConn) Stats() {
-	c.Lock()
-	c.Unlock()
 }
 
 // This is not thread safe
 func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
-	var out []byte
-	var action = c.Action
+	var (
+		out    []byte
+		input  []byte
+		action = c.Action
+	)
 
 	// Snapshot current working mode
-	owner := atomic.LoadInt32(&c.workerState)
+	ownership := atomic.LoadInt32(&c.ownership)
 
-	// Flush write atomically
-	//out = c.swapOut(&emptyBuffer)
-	//c.Lock()
-	//out = c.Out
-	//out = nil
-	//c.Unlock()
+	if len(in) == 0 {
+		// Flush leftovers
+		in = c.leftovers
+		c.leftovers = nil
+	} else {
+		// Ingress
+		atomic.AddUint64(&c.stats.ingress, uint64(len(in)))
 
-	// Flush worker writes if necessary
-	out = c.Out
-	c.Out = nil
+		// Flush leftovers
+		if len(c.leftovers) > 0 {
+			input = append(c.leftovers, in...)
+			c.leftovers = nil
+		} else {
+			input = in
+		}
+	}
+
+	wakeSnapshot := atomic.LoadUint64(&c.worker.wakeSnapshot)
+	wakes := atomic.LoadUint64(&c.worker.wakes)
+
+	if wakeSnapshot < wakes {
+		// Increment loop wakes counter
+		atomic.AddUint64(&c.stats.wakes, 1)
+		// Snapshot wakes state
+		atomic.StoreUint64(&c.worker.wakeSnapshot, wakes)
+
+		// Flush any existing writes
+		// Snapshot outCount
+		if outCount := atomic.LoadInt32(&c.worker.outCount); outCount > 0 {
+			for i := int32(0); i < outCount; i++ {
+				b := c.worker.outCh.Recv()
+				if len(b) > 0 {
+					out = append(out, b...)
+				}
+			}
+			// Mark them as processed
+			atomic.AddInt32(&c.worker.outCount, -outCount)
+		}
+	}
 
 	if c.next == nil {
 		c.next = &cmdGroup{}
@@ -214,40 +206,8 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 		return out, action
 	}
 
-	// Load the backlog
-	//backlog := c.loadBacklog()
-
-	data := in
-	if len(in) == 0 {
-		// Increment loop wake counter
-		atomic.AddUint64(&c.stats.wakes, 1)
-
-		// Is there nothing to parse?
-		if len(c.In) == 0 {
-			//if owner > 0 {
-			//	return out, action
-			//}
-
-			// Empty backlog if possible
-			goto AfterParse
-		} else {
-			// Were there any leftovers from the previous event?
-			data = c.In
-			c.In = nil
-		}
-	} else {
-		// Ingress
-		atomic.AddUint64(&c.stats.ingress, uint64(len(in)))
-
-		// Were there any leftovers from the previous event?
-		if len(c.In) > 0 {
-			data = append(c.In, in...)
-			c.In = nil
-		}
-	}
-
-	// Is there any data to parse?
-	if len(data) > 0 {
+	// Is there any input to parse?
+	if len(input) > 0 {
 		var
 		(
 			packet   []byte
@@ -261,18 +221,16 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 	// Let's parse the commands
 		for {
 			// Read next command.
-			packet, complete, args, _, data, err = redcon.ParseNextCommand(data, args[:0])
+			packet, complete, args, _, input, err = redcon.ParseNextCommand(input, args[:0])
 
 			if err != nil {
-				c.Lock()
 				c.Action = evio.Close
 				c.Reason = err
 				out = redcon.AppendError(out, err.Error())
-				c.Unlock()
 				return out, evio.Close
 			}
 
-			// Do we need more data?
+			// Do we need more input?
 			if !complete {
 				// Exit loop.
 				goto AfterParse
@@ -364,7 +322,7 @@ AfterParse:
 		}
 	}
 
-	if owner == loopOwner {
+	if ownership == loopOwner {
 		if len(c.backlog) > 0 {
 			var (
 				group *cmdGroup
@@ -400,7 +358,7 @@ AfterParse:
 						}
 					}
 
-					owner = workerOwner
+					ownership = workerOwner
 					if index > 0 {
 						c.backlog = c.backlog[index:]
 					}
@@ -418,14 +376,17 @@ AfterParse:
 				}
 			}
 
-			if owner == workerOwner {
-				// transfer backlog to worker
-				c.worker = append(c.worker, c.backlog...)
+			if ownership == workerOwner {
+				// Move to dispatched ownership
+				atomic.StoreInt32(&c.ownership, workerOwner)
+
+				// Transfer backlog to worker
+				for _, group := range c.backlog {
+					c.sendToWorker(group)
+				}
+
 				// Clear the backlog
 				c.backlog = c.backlog[:0]
-				// Move to dispatched owner
-				atomic.StoreInt32(&c.workerState, workerOwner)
-				Workers.Dispatch(c)
 			} else {
 				// Clear the backlog
 				c.backlog = c.backlog[:0]
@@ -445,8 +406,8 @@ AfterParse:
 	// This method has exclusive access to the "In" buffer
 	// so no need to do this within the mutex.
 	// If the backlog is filled then we will defer command parsing until a later time.
-	if len(data) > 0 {
-		c.In = append(c.In, data...)
+	if len(input) > 0 {
+		c.leftovers = append(c.leftovers, input...)
 	}
 
 	// Egress stats
@@ -514,119 +475,13 @@ func (c *CmdConn) execute(out []byte, group *cmdGroup) ([]byte) {
 }
 
 func (c *CmdConn) wake() {
-	if err := c.Ev.Wake(); err != nil {
-		c.Reason = err
-		c.Action = evio.Close
-	}
-}
-
-// Worker run
-func (c *CmdConn) Run() {
-	// Atomically get and clear the work list
-	//groups := c.swapWorker(_EmptyCommands)
-	//if groups == nil || len(groups) == 0 {
-	//	c.wake()
-	//	return
-	//}
-
-	// atomic writes
-	//out := c.swapOut(&emptyBuffer)
-
-	out := make([]byte, 0, BeginBufferSize)
-	groups := c.worker
-	c.worker = c.worker[:0]
-
-loop:
-// Since concurrent writes may happen we will cap the number of "pops" to
-// the snapshot above. Only 1 goroutine "pops" at a time and only the event-loop "pushes".
-// Which means the event-loop is in charge of parsing new groups and adding them to the backlog.
-// The worker merely processes what it can and atomically flushes "write" buffer for use
-// after the event-loop wakes this descriptor up.
-	for _, group := range groups {
-		if group.size() == 0 {
-			continue loop
+	ev := c.ev
+	if ev != nil {
+		if err := c.ev.Wake(); err != nil {
+			// This is a fatal error and this connection must be cleaned up.
+			c.Reason = err
+			c.Action = evio.Close
 		}
-
-		out = c.execute(out, group)
-		group.clear()
-	}
-
-	if out == nil {
-		//out = emptyBuffer
-	}
-
-	// Atomically set write buffer
-	//c.swapOut(&out)
-
-	c.Out = out
-
-	// Flip into non working mode
-	atomic.StoreInt32(&c.workerState, loopOwner)
-
-	// Wake up the loop
-	c.wake()
-}
-
-var _EmptyCommands = &[]cmdGroup{}
-var _EmptyCommandsPtr = unsafe.Pointer(&_EmptyCommands)
-
-func (c *CmdConn) swapWorker(to *[]cmdGroup) []cmdGroup {
-	ptr := atomic.SwapPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&c.worker)),
-		unsafe.Pointer(&*to),
-	)
-
-	if ptr == nil || ptr == _EmptyCommandsPtr {
-		return nil
-	} else {
-		g := (*[]cmdGroup)(ptr)
-		return *g
-	}
-}
-
-func (c *CmdConn) loadBacklog() []cmdGroup {
-	ptr := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.backlog)))
-	if ptr == nil || ptr == _EmptyCommandsPtr {
-		return nil
-	} else {
-		c := (*[]cmdGroup)(ptr)
-		return *c
-	}
-}
-
-func (c *CmdConn) storeBacklog(to *[]cmdGroup) {
-	atomic.StorePointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&c.backlog)),
-		unsafe.Pointer(&*to),
-	)
-}
-
-func (c *CmdConn) swapBacklog(to *[]cmdGroup) []cmdGroup {
-	ptr := atomic.SwapPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&c.backlog)),
-		unsafe.Pointer(&*to),
-	)
-
-	if ptr == nil || ptr == _EmptyCommandsPtr {
-		return nil
-	} else {
-		g := (*[]cmdGroup)(ptr)
-		return *g
-	}
-}
-
-func (c *CmdConn) swapOut(to *[]byte) []byte {
-	ptr := atomic.SwapPointer(
-		(*unsafe.Pointer)(unsafe.Pointer(&c.Out)),
-		unsafe.Pointer(&*to),
-	)
-
-	if ptr == nil || ptr == clearBuffer {
-		return nil
-	} else {
-		// De-reference
-		g := (*[]byte)(ptr)
-		return *g
 	}
 }
 
@@ -635,15 +490,143 @@ type cmdGroup struct {
 	isWorker bool
 	qidx     int32
 	list     []api.Command
-
-	//left *cmdGroup
 }
 
 func (c *cmdGroup) clear() {
 	c.isMulti = false
 	c.isWorker = false
-	c.qidx = 0
+	c.qidx = -1
+	// Reset already allocated slice
 	c.list = c.list[:0]
 }
 
+// Size of the list
 func (c *cmdGroup) size() int32 { return int32(len(c.list)) }
+
+//
+type cmdConnWorker struct {
+	wg      sync.WaitGroup
+	mutex   uintptr
+	counter int32
+	ch      workerChan
+
+	wakeSnapshot uint64
+	wakes        uint64
+
+	open         bool
+	waitingSince int64
+
+	outCh    outChan
+	outCount int32
+}
+
+// This will close the background goroutine
+func (c *CmdConn) stopWorker() {
+	if c.worker.open {
+		c.sendToWorker(stopMsg)
+		c.worker.open = false
+	}
+}
+
+// Called when the work queue is finished and ownership
+// is transferred back to the event-loop.
+// Since the ownership is not the worker anymore, this method
+// is not safe to modify the working state.
+func (c *CmdConn) workerCaughtUp() {
+}
+
+func (c *CmdConn) sendToWorker(group *cmdGroup) {
+	atomic.AddInt32(&c.worker.counter, 1)
+
+	if !c.worker.open {
+		c.worker.open = true
+		// Ensure there is only ever a single goroutine running in the background
+		c.worker.wg.Wait()
+
+		c.worker.wg.Add(1)
+		go func() {
+			defer c.worker.wg.Done()
+			var msg *cmdGroup
+			var count int32
+
+			for {
+				// Wait to receive next msg
+				c.worker.waitingSince = time.Now().UnixNano()
+				msg = c.worker.ch.Recv()
+				if msg == stopMsg || msg == nil {
+					c.worker.waitingSince = 0
+					count = atomic.AddInt32(&c.worker.counter, -1)
+					return
+				}
+
+				// Process the group
+				var b []byte
+				b = c.execute(b, group)
+				group.clear()
+
+				// Decrement count
+				count = atomic.AddInt32(&c.worker.counter, -1)
+
+				// Flush write
+				atomic.AddInt32(&c.worker.outCount, 1)
+				c.worker.outCh.Send(&b)
+
+				// Increment wake count
+				wakes := atomic.AddUint64(&c.worker.wakes, 1)
+
+				// Did we catch up?
+				if count == 0 {
+					// Transfer ownership back to the event-loop
+					atomic.StoreInt32(&c.ownership, loopOwner)
+					c.workerCaughtUp()
+				}
+
+				// Determine if the event-loop is behind.
+				// If it is then, we can guarantee that the next once
+				// the original wake happens, it will process the changes
+				// just made.
+				if atomic.LoadUint64(&c.worker.wakeSnapshot) == wakes-1 {
+					// Wake the event loop
+					c.wake()
+				}
+			}
+		}()
+	}
+
+	c.worker.ch.Send(group)
+}
+
+// Channel of *cmdGroup
+type workerChan struct {
+	base fastlane.ChanPointer
+}
+
+func (ch *workerChan) Send(value *cmdGroup) {
+	ch.base.Send(unsafe.Pointer(value))
+}
+
+func (ch *workerChan) Recv() *cmdGroup {
+	return (*cmdGroup)(ch.base.Recv())
+}
+
+// Channel of []byte
+type outChan struct {
+	base fastlane.ChanPointer
+}
+
+func (ch *outChan) Send(value *[]byte) {
+	// Handle nil
+	if value == nil {
+		value = &emptyBuffer
+	}
+	ch.base.Send(unsafe.Pointer(value))
+}
+
+func (ch *outChan) Recv() []byte {
+	// Dereference to []byte
+	return *(*[]byte)(ch.base.Recv())
+}
+
+func (c *CmdConn) tick() {
+	// Determine if there is a weird state that needs to be fixed
+}
