@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func init() { api.Register(&Sleep{}) }
@@ -20,9 +20,9 @@ func (c Sleep) IsError() bool  { return false }
 func (c Sleep) IsWorker() bool { return true }
 
 func (c Sleep) Marshal(buf []byte) []byte {
-	buf = redcon.AppendArray(buf, 2)
-	buf = redcon.AppendBulkString(buf, c.Name())
-	buf = redcon.AppendBulkInt64(buf, c.Millis)
+	buf = resp.AppendArray(buf, 2)
+	buf = resp.AppendBulkString(buf, c.Name())
+	buf = resp.AppendBulkInt64(buf, c.Millis)
 	return buf
 }
 

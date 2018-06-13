@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func init() { api.Register(&Get{}) }
@@ -17,9 +17,9 @@ func (c Get) IsError() bool  { return false }
 func (c Get) IsWorker() bool { return false }
 
 func (c Get) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 2)
-	b = redcon.AppendBulkString(b, "GET")
-	b = redcon.AppendBulkString(b, c.Key)
+	b = resp.AppendArray(b, 2)
+	b = resp.AppendBulkString(b, "GET")
+	b = resp.AppendBulkString(b, c.Key)
 	return b
 }
 

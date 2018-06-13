@@ -13,9 +13,9 @@ package cmd
 //func (c *CreateDatabase) IsWorker() bool  { return false }
 //
 //func (c *CreateDatabase) Marshal(buf []byte) []byte {
-//	buf = redcon.AppendArray(buf, 2)
-//	buf = redcon.AppendBulkString(buf, api.CreateDatabase)
-//	buf = redcon.AppendBulkString(buf, c.Name)
+//	buf = resp.AppendArray(buf, 2)
+//	buf = resp.AppendBulkString(buf, api.CreateDatabase)
+//	buf = resp.AppendBulkString(buf, c.Name)
 //	return buf
 //}
 //

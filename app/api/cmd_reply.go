@@ -1,16 +1,17 @@
 package api
 
 import (
-	"github.com/genzai-io/sliced/common/redcon"
-	"io"
-	"bytes"
 	"bufio"
-	"fmt"
+	"bytes"
+	"io"
+
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 var (
 	OK     = Ok{}
 	PONG   = Pong{}
+	PING   = BulkString("PING")
 	QUEUED = Queued{}
 	NIL    = Nil{}
 )
@@ -36,7 +37,7 @@ func (c Ok) IsError() bool  { return false }
 func (c Ok) IsWorker() bool { return true }
 
 func (e Ok) Marshal(b []byte) []byte {
-	return redcon.AppendOK(b)
+	return resp.AppendOK(b)
 }
 
 func (e Ok) Parse(args [][]byte) Command {
@@ -44,7 +45,7 @@ func (e Ok) Parse(args [][]byte) Command {
 }
 
 func (e Ok) MarshalReply(b []byte) []byte {
-	return redcon.AppendOK(b)
+	return resp.AppendOK(b)
 }
 
 func (e Ok) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -77,7 +78,7 @@ func (c Queued) IsError() bool  { return false }
 func (c Queued) IsWorker() bool { return true }
 
 func (e Queued) Marshal(b []byte) []byte {
-	return redcon.AppendQueued(b)
+	return resp.AppendQueued(b)
 }
 
 func (e Queued) Parse(args [][]byte) Command {
@@ -85,7 +86,7 @@ func (e Queued) Parse(args [][]byte) Command {
 }
 
 func (e Queued) MarshalReply(b []byte) []byte {
-	return redcon.AppendQueued(b)
+	return resp.AppendQueued(b)
 }
 
 func (e Queued) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -107,7 +108,7 @@ func (p Pong) IsError() bool  { return false }
 func (p Pong) IsWorker() bool { return true }
 
 func (p Pong) Marshal(b []byte) []byte {
-	return redcon.AppendString(b, p.Name())
+	return resp.AppendString(b, p.Name())
 }
 
 func (p Pong) Parse(args [][]byte) Command {
@@ -115,7 +116,7 @@ func (p Pong) Parse(args [][]byte) Command {
 }
 
 func (p Pong) MarshalReply(b []byte) []byte {
-	return redcon.AppendString(b, p.Name())
+	return resp.AppendString(b, p.Name())
 }
 
 func (p Pong) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -141,7 +142,7 @@ func (e Err) Error() string {
 }
 
 func (e Err) Marshal(b []byte) []byte {
-	return redcon.AppendError(b, string(e))
+	return resp.AppendError(b, string(e))
 }
 
 func (e Err) Parse(args [][]byte) Command {
@@ -149,7 +150,7 @@ func (e Err) Parse(args [][]byte) Command {
 }
 
 func (e Err) MarshalReply(b []byte) []byte {
-	return redcon.AppendError(b, string(e))
+	return resp.AppendError(b, string(e))
 }
 
 func (e Err) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -172,9 +173,9 @@ func (c Int) IsError() bool  { return false }
 func (c Int) IsWorker() bool { return false }
 
 func (c Int) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 1)
+	b = resp.AppendArray(b, 1)
 
-	return redcon.AppendBulkInt64(b, int64(c))
+	return resp.AppendBulkInt64(b, int64(c))
 }
 
 func (c Int) Parse(args [][]byte) Command {
@@ -182,7 +183,7 @@ func (c Int) Parse(args [][]byte) Command {
 }
 
 func (c Int) MarshalReply(b []byte) []byte {
-	return redcon.AppendInt(b, int64(c))
+	return resp.AppendInt(b, int64(c))
 }
 
 func (c Int) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -204,8 +205,8 @@ func (c Float) IsError() bool  { return false }
 func (c Float) IsWorker() bool { return false }
 
 func (c Float) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 1)
-	return redcon.AppendBulkInt64(b, int64(c))
+	b = resp.AppendArray(b, 1)
+	return resp.AppendBulkInt64(b, int64(c))
 }
 
 func (c Float) Parse(args [][]byte) Command {
@@ -213,7 +214,7 @@ func (c Float) Parse(args [][]byte) Command {
 }
 
 func (c Float) MarshalReply(b []byte) []byte {
-	return redcon.AppendInt(b, int64(c))
+	return resp.AppendInt(b, int64(c))
 }
 
 func (c Float) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -235,8 +236,8 @@ func (s BulkString) IsError() bool  { return false }
 func (s BulkString) IsWorker() bool { return false }
 
 func (s BulkString) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 1)
-	return redcon.AppendBulkString(b, string(s))
+	b = resp.AppendArray(b, 1)
+	return resp.AppendBulkString(b, string(s))
 }
 
 func (s BulkString) Parse(args [][]byte) Command {
@@ -247,7 +248,7 @@ func (s BulkString) Parse(args [][]byte) Command {
 }
 
 func (s BulkString) MarshalReply(b []byte) []byte {
-	return redcon.AppendBulkString(b, string(s))
+	return resp.AppendBulkString(b, string(s))
 }
 
 func (s BulkString) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -269,8 +270,8 @@ func (s SimpleString) IsError() bool  { return false }
 func (s SimpleString) IsWorker() bool { return false }
 
 func (s SimpleString) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 1)
-	return redcon.AppendBulkString(b, string(s))
+	b = resp.AppendArray(b, 1)
+	return resp.AppendBulkString(b, string(s))
 }
 
 func (s SimpleString) Parse(args [][]byte) Command {
@@ -278,7 +279,7 @@ func (s SimpleString) Parse(args [][]byte) Command {
 }
 
 func (s SimpleString) MarshalReply(b []byte) []byte {
-	return redcon.AppendString(b, string(s))
+	return resp.AppendString(b, string(s))
 }
 
 func (s SimpleString) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -300,8 +301,8 @@ func (by Bulk) IsError() bool  { return false }
 func (by Bulk) IsWorker() bool { return false }
 
 func (by Bulk) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 1)
-	return redcon.AppendBulk(b, []byte(by))
+	b = resp.AppendArray(b, 1)
+	return resp.AppendBulk(b, []byte(by))
 }
 
 func (by Bulk) Parse(args [][]byte) Command {
@@ -312,7 +313,7 @@ func (by Bulk) Parse(args [][]byte) Command {
 }
 
 func (by Bulk) MarshalReply(b []byte) []byte {
-	return redcon.AppendBulk(b, []byte(by))
+	return resp.AppendBulk(b, []byte(by))
 }
 
 func (by Bulk) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -336,9 +337,9 @@ func (arr Array) IsWorker() bool { return false }
 
 func (arr Array) Marshal(b []byte) []byte {
 	if len(arr) == 0 {
-		return redcon.AppendArray(b, 0)
+		return resp.AppendArray(b, 0)
 	} else {
-		b = redcon.AppendArray(b, len(arr))
+		b = resp.AppendArray(b, len(arr))
 		for _, element := range arr {
 			b = element.MarshalReply(b)
 		}
@@ -352,9 +353,9 @@ func (arr Array) Parse(args [][]byte) Command {
 
 func (arr Array) MarshalReply(b []byte) []byte {
 	if len(arr) == 0 {
-		return redcon.AppendArray(b, 0)
+		return resp.AppendArray(b, 0)
 	} else {
-		b = redcon.AppendArray(b, len(arr))
+		b = resp.AppendArray(b, len(arr))
 		for _, element := range arr {
 			b = element.MarshalReply(b)
 		}
@@ -381,7 +382,7 @@ func (n Nil) IsError() bool  { return false }
 func (n Nil) IsWorker() bool { return true }
 
 func (n Nil) Marshal(b []byte) []byte {
-	return redcon.AppendNull(b)
+	return resp.AppendNull(b)
 }
 
 func (n Nil) Parse(args [][]byte) Command {
@@ -389,7 +390,7 @@ func (n Nil) Parse(args [][]byte) Command {
 }
 
 func (n Nil) MarshalReply(b []byte) []byte {
-	return redcon.AppendNull(b)
+	return resp.AppendNull(b)
 }
 
 func (n Nil) UnmarshalReply(packet []byte, args [][]byte) error {
@@ -523,7 +524,7 @@ func ReplyEquals(reply CommandReply, reply2 CommandReply) bool {
 type ProtocolError string
 
 func (pe ProtocolError) Error() string {
-	return fmt.Sprintf("redigo: %s (possible server error or unsupported concurrent read by application)", string(pe))
+	return (string)(pe)
 }
 
 func readLine(br *bufio.Reader) ([]byte, error) {

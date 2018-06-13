@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func init() { api.Register(&RaftJoin{}) }
@@ -24,24 +24,24 @@ func (c *RaftJoin) IsWorker() bool { return true }
 
 func (c *RaftJoin) Marshal(buf []byte) []byte {
 	if c.ID.DatabaseID < 0 {
-		buf = redcon.AppendArray(buf, 3)
-		buf = redcon.AppendBulkString(buf, c.Name())
-		buf = redcon.AppendBulkString(buf, c.Address)
+		buf = resp.AppendArray(buf, 3)
+		buf = resp.AppendBulkString(buf, c.Name())
+		buf = resp.AppendBulkString(buf, c.Address)
 		if c.Voter {
-			buf = redcon.AppendBulkInt(buf, 1)
+			buf = resp.AppendBulkInt(buf, 1)
 		} else {
-			buf = redcon.AppendBulkInt(buf, 0)
+			buf = resp.AppendBulkInt(buf, 0)
 		}
 	} else {
-		buf = redcon.AppendArray(buf, 5)
-		buf = redcon.AppendBulkString(buf, c.Name())
-		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
-		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
-		buf = redcon.AppendBulkString(buf, c.Address)
+		buf = resp.AppendArray(buf, 5)
+		buf = resp.AppendBulkString(buf, c.Name())
+		buf = resp.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = resp.AppendBulkInt32(buf, c.ID.SliceID)
+		buf = resp.AppendBulkString(buf, c.Address)
 		if c.Voter {
-			buf = redcon.AppendBulkInt(buf, 1)
+			buf = resp.AppendBulkInt(buf, 1)
 		} else {
-			buf = redcon.AppendBulkInt(buf, 0)
+			buf = resp.AppendBulkInt(buf, 0)
 		}
 	}
 	return buf

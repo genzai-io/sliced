@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/proto/store"
 	"sync"
 	"github.com/genzai-io/sliced/common/service"

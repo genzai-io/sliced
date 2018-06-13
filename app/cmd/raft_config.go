@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 	"github.com/genzai-io/sliced/common/raft"
 	"strings"
 )
@@ -28,13 +28,13 @@ func (c *RaftConfig) IsWorker() bool { return true }
 //
 func (c *RaftConfig) Marshal(b []byte) []byte {
 	if c.ID.DatabaseID < 0 {
-		b = redcon.AppendArray(b, 1)
-		b = redcon.AppendBulkString(b, c.Name())
+		b = resp.AppendArray(b, 1)
+		b = resp.AppendBulkString(b, c.Name())
 	} else {
-		b = redcon.AppendArray(b, 3)
-		b = redcon.AppendBulkString(b, c.Name())
-		b = redcon.AppendBulkInt32(b, c.ID.DatabaseID)
-		b = redcon.AppendBulkInt32(b, c.ID.SliceID)
+		b = resp.AppendArray(b, 3)
+		b = resp.AppendBulkString(b, c.Name())
+		b = resp.AppendBulkInt32(b, c.ID.DatabaseID)
+		b = resp.AppendBulkInt32(b, c.ID.SliceID)
 	}
 	return b
 }
@@ -117,15 +117,15 @@ func (c *RaftConfigReply) IsError() bool { return false }
 //
 func (r *RaftConfigReply) MarshalReply(b []byte) []byte {
 	l := len(r.Servers)
-	b = redcon.AppendArray(b, l+1)
-	b = redcon.AppendInt(b, int64(r.Index))
+	b = resp.AppendArray(b, l+1)
+	b = resp.AppendInt(b, int64(r.Index))
 
 	if l > 0 {
 		for _, server := range r.Servers {
-			b = redcon.AppendArray(b, 3)
-			b = redcon.AppendBulkString(b, string(server.ID))
-			b = redcon.AppendBulkString(b, string(server.Address))
-			b = redcon.AppendBulkString(b, server.Suffrage.String())
+			b = resp.AppendArray(b, 3)
+			b = resp.AppendBulkString(b, string(server.ID))
+			b = resp.AppendBulkString(b, string(server.Address))
+			b = resp.AppendBulkString(b, server.Suffrage.String())
 		}
 	}
 

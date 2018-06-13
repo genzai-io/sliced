@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 	"github.com/genzai-io/sliced/app/api"
 )
 
@@ -18,9 +18,9 @@ func (c *Set) IsError() bool  { return false }
 func (c *Set) IsWorker() bool { return false }
 
 func (c *Set) Marshal(b []byte) []byte {
-	b = redcon.AppendArray(b, 2)
-	b = redcon.AppendBulkString(b, c.Name())
-	b = redcon.AppendBulkString(b, c.Key)
+	b = resp.AppendArray(b, 2)
+	b = resp.AppendBulkString(b, c.Name())
+	b = resp.AppendBulkString(b, c.Key)
 	return b
 }
 

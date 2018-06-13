@@ -5,9 +5,9 @@ import (
 
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/ring"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
 	store_pb "github.com/genzai-io/sliced/proto/store"
-	"github.com/genzai-io/sliced/btrdb"
 )
 
 // Database's are isolated from each other and have their own Slices and
@@ -18,15 +18,15 @@ type Database struct {
 
 	mu    sync.RWMutex
 	model store_pb.Database
-	db *btrdb.DB
+	db    *btrdb.DB
 
 	id     int32
 	ring   *ring.Ring
 	slices []*Slice
 
-	tblTopics    *btrdb.Table
-	topics map[int64]*Topic
-	queues map[int64]*Queue
+	tblTopics *btrdb.Table
+	topics    map[int64]*Topic
+	queues    map[int64]*Queue
 
 	topicCounter  uint64
 	rollerCounter uint64
@@ -36,7 +36,7 @@ type Database struct {
 
 func newDatabase(db *btrdb.DB, model *store_pb.Database) *Database {
 	d := &Database{
-		db: db,
+		db:     db,
 		model:  *model,
 		topics: make(map[int64]*Topic),
 		queues: make(map[int64]*Queue),

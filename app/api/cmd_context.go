@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 
 	"github.com/genzai-io/sliced/common/evio"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func ErrWake(err error) error {
@@ -102,56 +102,6 @@ func (c *Context) onReply(reply CommandReply) {
 	// Black-hole
 }
 
-// Processes the Backlog until it's either out of commands or reaches
-// a worker command. At which point it will dispatch
-//func (c *Context) processInternal(backlog []Command) {
-//	if c.Multi {
-//		return
-//	}
-//
-//	l := len(backlog)
-//
-//	var (
-//		wrkidx  = -1
-//		i       int
-//		command Command
-//		onReply = c.OnReply
-//	)
-//	if onReply == nil {
-//		onReply = c.onReply
-//	}
-//	if l > 0 {
-//	LOOP:
-//		for i, command = range backlog {
-//			if command.IsWorker() {
-//				wrkidx = i
-//				break LOOP
-//			} else {
-//				// Run job.
-//				reply := command.Handle(c)
-//				if reply == nil {
-//					reply = Err("ERR not implemented")
-//				}
-//				onReply(reply)
-//			}
-//		}
-//	}
-//
-//	c.Lock()
-//	if wrkidx > -1 {
-//		c.worker = backlog[wrkidx]
-//		if wrkidx+1 < l {
-//			c.Backlog = backlog[wrkidx+1:]
-//		} else {
-//			// Current worker was the last command in the Backlog.
-//			// We can fully clear the Backlog.
-//			c.Backlog = nil
-//		}
-//	} else {
-//		c.Unlock()
-//	}
-//}
-
 func (c *Context) processMulti() {
 
 }
@@ -168,7 +118,7 @@ func (c *Context) AppendCommand(b []byte, command Command) []byte {
 	before := len(b)
 	b = reply.MarshalReply(b)
 	if len(b) == before {
-		b = redcon.AppendError(b, "ERR empty reply for command '"+command.Name()+"'")
+		b = resp.AppendError(b, "ERR empty reply for command '"+command.Name()+"'")
 	}
 	return b
 }
@@ -194,7 +144,6 @@ type ContextInput struct {
 	statsTotalCommands uint64
 	statsIngress       uint64
 	statsEgress        uint64
-	statsWakes         uint64
 }
 
 func (c *ContextInput) InputReply(in []byte) (o []CommandReply) {
@@ -238,7 +187,7 @@ func (c *ContextInput) Input(in []byte) (o []byte) {
 LOOP:
 	for {
 		// Read next command.
-		packet, complete, args, _, data, err = redcon.ParseNextCommand(data, args[:0])
+		packet, complete, args, _, data, err = resp.ParseNextCommand(data, args[:0])
 		_ = packet
 
 		if err != nil {
@@ -271,7 +220,7 @@ LOOP:
 				// Exec currentMulti
 			} else {
 				c.MultiList = append(c.MultiList, command)
-				o = redcon.AppendQueued(o)
+				o = resp.AppendQueued(o)
 			}
 		} else {
 			reply := command.Handle(&c.Context)
@@ -282,7 +231,7 @@ LOOP:
 			before := len(o)
 			o = reply.MarshalReply(o)
 			if len(o) == before {
-				o = redcon.AppendError(o, "ERR empty reply for command '"+command.Name()+"'")
+				o = resp.AppendError(o, "ERR empty reply for command '"+command.Name()+"'")
 			}
 		}
 
@@ -310,7 +259,7 @@ LOOP:
 			before := len(o)
 			o = reply.MarshalReply(o)
 			if len(o) == before {
-				o = redcon.AppendError(o, "ERR empty reply for command '"+command.Name()+"'")
+				o = resp.AppendError(o, "ERR empty reply for command '"+command.Name()+"'")
 			}
 		}
 	}

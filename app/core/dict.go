@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/genzai-io/sliced"
-	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
 	"github.com/genzai-io/sliced/proto/store"
 )

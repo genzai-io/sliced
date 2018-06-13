@@ -7,7 +7,7 @@ import (
 	//"github.com/coreos/bbolt"
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
 )
 
@@ -18,7 +18,7 @@ type SliceService struct {
 	ID   uint16
 	Path string
 
-	db     *btrdb.DB
+	db *btrdb.DB
 
 	topics       map[int64]*TopicSlice
 	topicsByName map[string]*TopicSlice
@@ -30,7 +30,7 @@ type SliceService struct {
 
 func newSliceService(id api.RaftID, path string) *SliceService {
 	s := &SliceService{
-		Path:   path,
+		Path: path,
 	}
 
 	s.BaseService = *service.NewBaseService(moved.Logger, fmt.Sprintf("slice.%d", id), s)

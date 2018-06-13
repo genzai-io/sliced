@@ -5,45 +5,11 @@ import (
 	"unsafe"
 )
 
+// Global registry of commands
 var Commands map[string]Command
 
 func init() {
 	Commands = make(map[string]Command)
-}
-
-func ParseCommand(packet []byte, args [][]byte) Command {
-	if len(args) == 0 {
-		return Err("ERR empty request")
-	}
-
-	name := *(*string)(unsafe.Pointer(&args[0]))
-
-	// Find command
-	command, ok := Commands[name]
-	if !ok {
-		return nil
-	}
-	if command != nil {
-		command = command.Parse(args)
-	}
-
-	return command
-}
-
-func Register(cmd Command) {
-	name := strings.TrimSpace(cmd.Name())
-	lower := strings.ToLower(name)
-	upper := strings.ToUpper(name)
-
-	if _, ok := Commands[lower]; ok {
-		panic("command name '" + lower + "' already used")
-	}
-	if _, ok := Commands[upper]; ok {
-		panic("command name '" + upper + "' already used")
-	}
-
-	Commands[lower] = cmd
-	Commands[upper] = cmd
 }
 
 type CommandStats struct {
@@ -85,8 +51,37 @@ type Command interface {
 }
 
 //
-//
-//
-func RAW(b []byte) Command {
-	return Bulk(b)
+func ParseCommand(packet []byte, args [][]byte) Command {
+	if len(args) == 0 {
+		return Err("ERR empty request")
+	}
+
+	name := *(*string)(unsafe.Pointer(&args[0]))
+
+	// Find command
+	command, ok := Commands[name]
+	if !ok {
+		return nil
+	}
+	if command != nil {
+		command = command.Parse(args)
+	}
+
+	return command
+}
+
+func Register(cmd Command) {
+	name := strings.TrimSpace(cmd.Name())
+	lower := strings.ToLower(name)
+	upper := strings.ToUpper(name)
+
+	if _, ok := Commands[lower]; ok {
+		panic("command name '" + lower + "' already used")
+	}
+	if _, ok := Commands[upper]; ok {
+		panic("command name '" + upper + "' already used")
+	}
+
+	Commands[lower] = cmd
+	Commands[upper] = cmd
 }

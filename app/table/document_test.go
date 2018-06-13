@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/genzai-io/sliced/app/codec/gjson"
+	"github.com/genzai-io/sliced/common/gjson"
 )
 
 func TestJSONValue_Get(t *testing.T) {

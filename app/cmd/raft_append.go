@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func init() { api.Register(&RaftAppend{}) }
@@ -17,12 +17,12 @@ func (c *RaftAppend) IsError() bool  { return false }
 func (c *RaftAppend) IsWorker() bool { return true }
 
 func (c *RaftAppend) Marshal(buf []byte) []byte {
-	buf = redcon.AppendArray(buf, 2)
-	buf = redcon.AppendBulkString(buf, c.Name())
+	buf = resp.AppendArray(buf, 2)
+	buf = resp.AppendBulkString(buf, c.Name())
 	if c.Payload == nil {
-		buf = redcon.AppendBulk(buf, []byte{})
+		buf = resp.AppendBulk(buf, []byte{})
 	} else {
-		buf = redcon.AppendBulk(buf, c.Payload)
+		buf = resp.AppendBulk(buf, c.Payload)
 	}
 
 	return buf

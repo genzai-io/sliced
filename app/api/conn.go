@@ -1,18 +1,21 @@
 package api
 
 import (
-	"github.com/genzai-io/sliced/common/evio"
 	"io"
+
+	"github.com/genzai-io/sliced/common/evio"
 )
 
 type ConnKind byte
 
 const (
-	ConnCommand ConnKind = 0
-	ConnPubSub  ConnKind = 1
-	ConnRaft    ConnKind = 2
-	ConnQueue   ConnKind = 3
-	ConnInstall ConnKind = 4
+	ConnCommand   ConnKind = 0
+	ConnPubSub    ConnKind = 1
+	ConnRaft      ConnKind = 2
+	ConnQueue     ConnKind = 3
+	ConnInstall   ConnKind = 4
+	ConnHTTP      ConnKind = 5
+	ConnWebSocket ConnKind = 6
 )
 
 type EvConn interface {

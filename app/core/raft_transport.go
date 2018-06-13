@@ -15,14 +15,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
-	"github.com/genzai-io/sliced/common/raft"
-	"github.com/genzai-io/sliced/common/redcon"
-	"github.com/genzai-io/sliced/common/service"
 	"github.com/genzai-io/sliced/common/evio"
+	"github.com/genzai-io/sliced/common/raft"
+	"github.com/genzai-io/sliced/common/redigo/redis"
+	"github.com/genzai-io/sliced/common/resp"
+	"github.com/genzai-io/sliced/common/service"
 )
 
 const (
@@ -584,14 +584,14 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 	t.consumer <- rpc
 
 	// Wait for response
-	resp := <-respChan
-	if resp.Error != nil {
+	re := <-respChan
+	if re.Error != nil {
 		rd.Close()
 		wr.Close()
-		return cmd.ERROR(resp.Error)
+		return cmd.ERROR(re.Error)
 	}
 	// Marshal response
-	data, err := json.Marshal(resp.Response)
+	data, err := json.Marshal(re.Response)
 	if err != nil {
 		rd.Close()
 		wr.Close()
@@ -609,12 +609,12 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 	ctx.Kind = api.ConnInstall
 	ctx.Parse = t.installing.Parse
 
-	out := redcon.AppendOK(nil)
-	out = redcon.AppendBulk(out, data)
+	out := resp.AppendOK(nil)
+	out = resp.AppendBulk(out, data)
 	return api.Bulk(out)
 }
 
-//func (t *RESPTransport) handleInstallSnapshot(conn redcon.DetachedConn, arg []byte) {
+//func (t *RESPTransport) handleInstallSnapshot(conn resp.DetachedConn, arg []byte) {
 //	err := func() error {
 //		var rpc raft.RPC
 //		rpc.Command = &raft.InstallSnapshotRequest{}
@@ -685,7 +685,7 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 //	}
 //}
 
-//func (t *RESPTransport) handle(conn redcon.CommandConn, cmd redcon.Command) {
+//func (t *RESPTransport) handle(conn resp.CommandConn, cmd resp.Command) {
 //	var err error
 //	var res []byte
 //	switch strings.ToLower(string(cmd.Args[0])) {

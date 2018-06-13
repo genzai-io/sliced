@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/genzai-io/sliced/common/evio"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 type conn struct {
@@ -73,10 +73,10 @@ func main() {
 		var err error
 		var args [][]byte
 		for action == evio.None {
-			complete, args, _, data, err = redcon.ReadNextCommand(data, args[:0])
+			complete, args, _, data, err = resp.ReadNextCommand(data, args[:0])
 			if err != nil {
 				action = evio.Close
-				out = redcon.AppendError(out, err.Error())
+				out = resp.AppendError(out, err.Error())
 				break
 			}
 			if !complete {
@@ -86,54 +86,54 @@ func main() {
 				n++
 				switch strings.ToUpper(string(args[0])) {
 				default:
-					out = redcon.AppendError(out, "unknown command '"+string(args[0])+"'")
+					out = resp.AppendError(out, "unknown command '"+string(args[0])+"'")
 				case "PING":
 					if len(args) > 2 {
-						out = redcon.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
+						out = resp.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
 					} else if len(args) == 2 {
-						out = redcon.AppendBulk(out, args[1])
+						out = resp.AppendBulk(out, args[1])
 					} else {
-						out = redcon.AppendString(out, "PONG")
+						out = resp.AppendString(out, "PONG")
 					}
 				case "ECHO":
 					if len(args) != 2 {
-						out = redcon.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
+						out = resp.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
 					} else {
-						out = redcon.AppendBulk(out, args[1])
+						out = resp.AppendBulk(out, args[1])
 					}
 				case "SHUTDOWN":
-					out = redcon.AppendString(out, "OK")
+					out = resp.AppendString(out, "OK")
 					action = evio.Shutdown
 				case "QUIT":
-					out = redcon.AppendString(out, "OK")
+					out = resp.AppendString(out, "OK")
 					action = evio.Close
 				case "GET":
 					if len(args) != 2 {
-						out = redcon.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
+						out = resp.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
 					} else {
 						key := string(args[1])
 						mu.Lock()
 						val, ok := keys[key]
 						mu.Unlock()
 						if !ok {
-							out = redcon.AppendNull(out)
+							out = resp.AppendNull(out)
 						} else {
-							out = redcon.AppendBulkString(out, val)
+							out = resp.AppendBulkString(out, val)
 						}
 					}
 				case "SET":
 					if len(args) != 3 {
-						out = redcon.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
+						out = resp.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
 					} else {
 						key, val := string(args[1]), string(args[2])
 						mu.Lock()
 						keys[key] = val
 						mu.Unlock()
-						out = redcon.AppendString(out, "OK")
+						out = resp.AppendString(out, "OK")
 					}
 				case "DEL":
 					if len(args) < 2 {
-						out = redcon.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
+						out = resp.AppendError(out, "wrong number of arguments for '"+string(args[0])+"' command")
 					} else {
 						var n int
 						mu.Lock()
@@ -144,13 +144,13 @@ func main() {
 							}
 						}
 						mu.Unlock()
-						out = redcon.AppendInt(out, int64(n))
+						out = resp.AppendInt(out, int64(n))
 					}
 				case "FLUSHDB":
 					mu.Lock()
 					keys = make(map[string]string)
 					mu.Unlock()
-					out = redcon.AppendString(out, "OK")
+					out = resp.AppendString(out, "OK")
 				}
 			}
 		}

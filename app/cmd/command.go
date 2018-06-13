@@ -2,11 +2,11 @@ package cmd
 
 import (
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 var (
-	ok = redcon.AppendOK(nil)
+	ok = resp.AppendOK(nil)
 )
 
 // Aliases
@@ -49,12 +49,12 @@ func BulkString(str string) api.Command {
 //
 //
 func ERR(message string) api.Command {
-	return RAW(redcon.AppendError(nil, message))
+	return RAW(resp.AppendError(nil, message))
 }
 
 //
 //
 //
 func ERROR(err error) api.Command {
-	return RAW(redcon.AppendError(nil, err.Error()))
+	return RAW(resp.AppendError(nil, err.Error()))
 }

@@ -12,7 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/genzai-io/sliced"
-	"github.com/genzai-io/sliced/app/codec/gjson"
+	"github.com/genzai-io/sliced/common/gjson"
 	"github.com/genzai-io/sliced/app/table/index/btree"
 	"github.com/genzai-io/sliced/common/match"
 )

@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func init() { api.Register(&RaftBootstrap{}) }
@@ -22,13 +22,13 @@ func (c *RaftBootstrap) IsWorker() bool { return true }
 
 func (c *RaftBootstrap) Marshal(buf []byte) []byte {
 	if c.ID.DatabaseID < 0 {
-		buf = redcon.AppendArray(buf, 1)
-		buf = redcon.AppendBulkString(buf, c.Name())
+		buf = resp.AppendArray(buf, 1)
+		buf = resp.AppendBulkString(buf, c.Name())
 	} else {
-		buf = redcon.AppendArray(buf, 3)
-		buf = redcon.AppendBulkString(buf, c.Name())
-		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
-		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
+		buf = resp.AppendArray(buf, 3)
+		buf = resp.AppendBulkString(buf, c.Name())
+		buf = resp.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = resp.AppendBulkInt32(buf, c.ID.SliceID)
 	}
 	return buf
 }

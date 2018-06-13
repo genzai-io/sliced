@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 func init() { api.Register(&RaftDemote{}) }
@@ -24,15 +24,15 @@ func (c *RaftDemote) IsWorker() bool { return true }
 
 func (c *RaftDemote) Marshal(buf []byte) []byte {
 	if c.ID.DatabaseID < 0 {
-		buf = redcon.AppendArray(buf, 2)
-		buf = redcon.AppendBulkString(buf, c.Name())
-		buf = redcon.AppendBulkString(buf, c.Address)
+		buf = resp.AppendArray(buf, 2)
+		buf = resp.AppendBulkString(buf, c.Name())
+		buf = resp.AppendBulkString(buf, c.Address)
 	} else {
-		buf = redcon.AppendArray(buf, 4)
-		buf = redcon.AppendBulkString(buf, c.Name())
-		buf = redcon.AppendBulkInt32(buf, c.ID.DatabaseID)
-		buf = redcon.AppendBulkInt32(buf, c.ID.SliceID)
-		buf = redcon.AppendBulkString(buf, c.Address)
+		buf = resp.AppendArray(buf, 4)
+		buf = resp.AppendBulkString(buf, c.Name())
+		buf = resp.AppendBulkInt32(buf, c.ID.DatabaseID)
+		buf = resp.AppendBulkInt32(buf, c.ID.SliceID)
+		buf = resp.AppendBulkString(buf, c.Address)
 	}
 	return buf
 }

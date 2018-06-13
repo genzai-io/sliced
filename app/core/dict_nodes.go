@@ -1,7 +1,7 @@
 package core
 
 import (
-	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/proto/store"
 	"runtime"
 	"github.com/genzai-io/sliced"
@@ -10,6 +10,7 @@ import (
 	"github.com/genzai-io/sliced/common/service"
 )
 
+// Global node store
 type nodeStore struct {
 	service.BaseService
 

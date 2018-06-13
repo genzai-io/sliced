@@ -59,6 +59,6 @@ func (t *remoteNodeTransport) Send(command api.Command) []byte {
 		return nil
 	}
 
-	//redcon.ParseCommand()
+	//resp.ParseCommand()
 	return nil
 }

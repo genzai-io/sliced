@@ -133,15 +133,6 @@
   version = "v1.4.7"
 
 [[projects]]
-  name = "github.com/garyburd/redigo"
-  packages = [
-    "internal",
-    "redis"
-  ]
-  revision = "a69d19351219b6dd56f274f96d85a7014a2ec34e"
-  version = "v1.6.0"
-
-[[projects]]
   name = "github.com/gbrlsnchs/radix"
   packages = ["."]
   revision = "f58545455fb3cf844b9b1901a852a9f4526e8d18"
@@ -461,6 +452,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/pointc-io/sliced"
+  packages = ["index/celltree"]
+  revision = "d5e36145d7bd73493b5c8b8288e25ec16c36146c"
+
+[[projects]]
+  branch = "master"
   name = "github.com/rcrowley/go-metrics"
   packages = ["."]
   revision = "e2704e165165ec55d062f5919b4b29494e9fa790"
@@ -726,6 +723,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d2249d9f140c50962313827c630ea795f320a4778c29d2fda8d77263320472e5"
+  inputs-digest = "5d12cb7f6455455e5a1c770fc29e25edecfde4e8d07b2e2cda6048e74171b563"
   solver-name = "gps-cdcl"
   solver-version = 1

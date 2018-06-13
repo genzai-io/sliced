@@ -1,4 +1,4 @@
-package redcon
+package resp
 
 import (
 	"errors"
@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	errUnbalancedQuotes       = &errProtocol{"unbalanced quotes in request"}
-	errInvalidBulkLength      = &errProtocol{"invalid bulk length"}
-	errInvalidMultiBulkLength = &errProtocol{"invalid multibulk length"}
-	errDetached               = errors.New("detached")
-	errIncompleteCommand      = errors.New("incomplete command")
-	errTooMuchData            = errors.New("too much data")
+	errUnbalancedQuotes       = &errProtocol{"PROT unbalanced quotes in request"}
+	errInvalidBulkLength      = &errProtocol{"PROT invalid bulk length"}
+	errInvalidMultiBulkLength = &errProtocol{"PROT invalid multibulk length"}
+	errDetached               = errors.New("ERR detached")
+	errIncompleteCommand      = errors.New("ERR incomplete command")
+	errTooMuchData            = errors.New("ERR too much data")
 )
 
 type errProtocol struct {
@@ -20,7 +20,7 @@ type errProtocol struct {
 }
 
 func (err *errProtocol) Error() string {
-	return "PROTO " + err.msg
+	return err.msg
 }
 
 // Kind is the kind of command
@@ -35,7 +35,7 @@ const (
 	Telnet
 )
 
-var errInvalidMessage = &errProtocol{"invalid message"}
+var errInvalidMessage = &errProtocol{"PROT invalid message"}
 
 func parseInt(b []byte) (int, bool) {
 	if len(b) == 1 && b[0] >= '0' && b[0] <= '9' {
@@ -72,14 +72,16 @@ func parseInt(b []byte) (int, bool) {
 func ReadNextCommand(packet []byte, argsbuf [][]byte) (
 	complete bool, args [][]byte, kind Kind, leftover []byte, err error,
 ) {
+	// Clear argsbuf
 	args = argsbuf[:0]
 	if len(packet) > 0 {
-		if packet[0] != '*' {
-			if packet[0] == '$' {
-				return readTile38Command(packet, args)
-			}
-			return readTelnetCommand(packet, args)
-		}
+		//if packet[0] != '*' {
+		//	if packet[0] == '$' {
+		//		return readTile38Command(packet, args)
+		//	}
+		//	return readTelnetCommand(packet, args)
+		//}
+
 		// standard redis command
 		for s, i := 1, 1; i < len(packet); i++ {
 			if packet[i] == '\n' {
@@ -101,7 +103,7 @@ func ReadNextCommand(packet []byte, argsbuf [][]byte) (
 					}
 					if packet[i] != '$' {
 						return false, args[:0], Redis, packet,
-							&errProtocol{"expected '$', got '" +
+							&errProtocol{"PROT expected '$', got '" +
 								string(packet[i]) + "'"}
 					}
 					for s := i + 1; i < len(packet); i++ {
@@ -138,7 +140,7 @@ func ReadNextCommand(packet []byte, argsbuf [][]byte) (
 	return false, args[:0], Redis, packet, nil
 }
 
-var errIncomplete = errors.New("incomplete")
+var errIncomplete = errors.New("ERR incomplete")
 
 func ParseCommand(packet []byte) (args [][]byte, kind Kind, err error) {
 	var argsbuf [][]byte
@@ -224,137 +226,137 @@ func ParseNextCommand(packet []byte, argsbuf [][]byte) (
 	return packet, false, args[:0], Redis, packet, nil
 }
 
-func readTile38Command(packet []byte, argsbuf [][]byte) (
-	complete bool, args [][]byte, kind Kind, leftover []byte, err error,
-) {
-	for i := 1; i < len(packet); i++ {
-		if packet[i] == ' ' {
-			n, ok := parseInt(packet[1:i])
-			if !ok || n < 0 {
-				return false, args[:0], Tile38, packet, errInvalidMessage
-			}
-			i++
-			if len(packet) >= i+n+2 {
-				if packet[i+n] != '\r' || packet[i+n+1] != '\n' {
-					return false, args[:0], Tile38, packet, errInvalidMessage
-				}
-				line := packet[i : i+n]
-			reading:
-				for len(line) != 0 {
-					if line[0] == '{' {
-						// The native protocol cannot understand json boundaries so it assumes that
-						// a json element must be at the end of the line.
-						args = append(args, line)
-						break
-					}
-					if line[0] == '"' && line[len(line)-1] == '"' {
-						if len(args) > 0 &&
-							strings.ToLower(string(args[0])) == "set" &&
-							strings.ToLower(string(args[len(args)-1])) == "string" {
-							// Setting a string value that is contained inside double quotes.
-							// This is only because of the boundary issues of the native protocol.
-							args = append(args, line[1:len(line)-1])
-							break
-						}
-					}
-					i := 0
-					for ; i < len(line); i++ {
-						if line[i] == ' ' {
-							value := line[:i]
-							if len(value) > 0 {
-								args = append(args, value)
-							}
-							line = line[i+1:]
-							continue reading
-						}
-					}
-					args = append(args, line)
-					break
-				}
-				return true, args, Tile38, packet[i+n+2:], nil
-			}
-			break
-		}
-	}
-	return false, args[:0], Tile38, packet, nil
-}
-func readTelnetCommand(packet []byte, argsbuf [][]byte) (
-	complete bool, args [][]byte, kind Kind, leftover []byte, err error,
-) {
-	// just a plain text command
-	for i := 0; i < len(packet); i++ {
-		if packet[i] == '\n' {
-			var line []byte
-			if i > 0 && packet[i-1] == '\r' {
-				line = packet[:i-1]
-			} else {
-				line = packet[:i]
-			}
-			var quote bool
-			var quotech byte
-			var escape bool
-		outer:
-			for {
-				nline := make([]byte, 0, len(line))
-				for i := 0; i < len(line); i++ {
-					c := line[i]
-					if !quote {
-						if c == ' ' {
-							if len(nline) > 0 {
-								args = append(args, nline)
-							}
-							line = line[i+1:]
-							continue outer
-						}
-						if c == '"' || c == '\'' {
-							if i != 0 {
-								return false, args[:0], Telnet, packet, errUnbalancedQuotes
-							}
-							quotech = c
-							quote = true
-							line = line[i+1:]
-							continue outer
-						}
-					} else {
-						if escape {
-							escape = false
-							switch c {
-							case 'n':
-								c = '\n'
-							case 'r':
-								c = '\r'
-							case 't':
-								c = '\t'
-							}
-						} else if c == quotech {
-							quote = false
-							quotech = 0
-							args = append(args, nline)
-							line = line[i+1:]
-							if len(line) > 0 && line[0] != ' ' {
-								return false, args[:0], Telnet, packet, errUnbalancedQuotes
-							}
-							continue outer
-						} else if c == '\\' {
-							escape = true
-							continue
-						}
-					}
-					nline = append(nline, c)
-				}
-				if quote {
-					return false, args[:0], Telnet, packet, errUnbalancedQuotes
-				}
-				if len(line) > 0 {
-					args = append(args, line)
-				}
-				break
-			}
-			return true, args, Telnet, packet[i+1:], nil
-		}
-	}
-	return false, args[:0], Telnet, packet, nil
-}
+//func readTile38Command(packet []byte, argsbuf [][]byte) (
+//	complete bool, args [][]byte, kind Kind, leftover []byte, err error,
+//) {
+//	for i := 1; i < len(packet); i++ {
+//		if packet[i] == ' ' {
+//			n, ok := parseInt(packet[1:i])
+//			if !ok || n < 0 {
+//				return false, args[:0], Tile38, packet, errInvalidMessage
+//			}
+//			i++
+//			if len(packet) >= i+n+2 {
+//				if packet[i+n] != '\r' || packet[i+n+1] != '\n' {
+//					return false, args[:0], Tile38, packet, errInvalidMessage
+//				}
+//				line := packet[i : i+n]
+//			reading:
+//				for len(line) != 0 {
+//					if line[0] == '{' {
+//						// The native protocol cannot understand json boundaries so it assumes that
+//						// a json element must be at the end of the line.
+//						args = append(args, line)
+//						break
+//					}
+//					if line[0] == '"' && line[len(line)-1] == '"' {
+//						if len(args) > 0 &&
+//							strings.ToLower(string(args[0])) == "set" &&
+//							strings.ToLower(string(args[len(args)-1])) == "string" {
+//							// Setting a string value that is contained inside double quotes.
+//							// This is only because of the boundary issues of the native protocol.
+//							args = append(args, line[1:len(line)-1])
+//							break
+//						}
+//					}
+//					i := 0
+//					for ; i < len(line); i++ {
+//						if line[i] == ' ' {
+//							value := line[:i]
+//							if len(value) > 0 {
+//								args = append(args, value)
+//							}
+//							line = line[i+1:]
+//							continue reading
+//						}
+//					}
+//					args = append(args, line)
+//					break
+//				}
+//				return true, args, Tile38, packet[i+n+2:], nil
+//			}
+//			break
+//		}
+//	}
+//	return false, args[:0], Tile38, packet, nil
+//}
+//func readTelnetCommand(packet []byte, argsbuf [][]byte) (
+//	complete bool, args [][]byte, kind Kind, leftover []byte, err error,
+//) {
+//	// just a plain text command
+//	for i := 0; i < len(packet); i++ {
+//		if packet[i] == '\n' {
+//			var line []byte
+//			if i > 0 && packet[i-1] == '\r' {
+//				line = packet[:i-1]
+//			} else {
+//				line = packet[:i]
+//			}
+//			var quote bool
+//			var quotech byte
+//			var escape bool
+//		outer:
+//			for {
+//				nline := make([]byte, 0, len(line))
+//				for i := 0; i < len(line); i++ {
+//					c := line[i]
+//					if !quote {
+//						if c == ' ' {
+//							if len(nline) > 0 {
+//								args = append(args, nline)
+//							}
+//							line = line[i+1:]
+//							continue outer
+//						}
+//						if c == '"' || c == '\'' {
+//							if i != 0 {
+//								return false, args[:0], Telnet, packet, errUnbalancedQuotes
+//							}
+//							quotech = c
+//							quote = true
+//							line = line[i+1:]
+//							continue outer
+//						}
+//					} else {
+//						if escape {
+//							escape = false
+//							switch c {
+//							case 'n':
+//								c = '\n'
+//							case 'r':
+//								c = '\r'
+//							case 't':
+//								c = '\t'
+//							}
+//						} else if c == quotech {
+//							quote = false
+//							quotech = 0
+//							args = append(args, nline)
+//							line = line[i+1:]
+//							if len(line) > 0 && line[0] != ' ' {
+//								return false, args[:0], Telnet, packet, errUnbalancedQuotes
+//							}
+//							continue outer
+//						} else if c == '\\' {
+//							escape = true
+//							continue
+//						}
+//					}
+//					nline = append(nline, c)
+//				}
+//				if quote {
+//					return false, args[:0], Telnet, packet, errUnbalancedQuotes
+//				}
+//				if len(line) > 0 {
+//					args = append(args, line)
+//				}
+//				break
+//			}
+//			return true, args, Telnet, packet[i+1:], nil
+//		}
+//	}
+//	return false, args[:0], Telnet, packet, nil
+//}
 
 // appendPrefix will append a "$3\r\n" style redis prefix for a message.
 func appendPrefix(b []byte, c byte, n int64) []byte {
@@ -430,15 +432,6 @@ func stripNewlines(s string) string {
 		}
 	}
 	return s
-}
-
-// AppendTile38 appends a Tile38 message to the input bytes.
-func AppendTile38(b []byte, data []byte) []byte {
-	b = append(b, '$')
-	b = strconv.AppendInt(b, int64(len(data)), 10)
-	b = append(b, ' ')
-	b = append(b, data...)
-	return append(b, '\r', '\n')
 }
 
 // AppendNull appends a Redis protocol null to the input bytes.

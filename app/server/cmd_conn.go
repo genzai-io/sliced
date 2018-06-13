@@ -14,7 +14,7 @@ import (
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/common/evio"
 	"github.com/genzai-io/sliced/common/fastlane"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 var (
@@ -42,39 +42,33 @@ const (
 	workerOwner int32 = 1
 )
 
-// Non-Blocking
+// Non-Blocking RESP Connection
 //
-// This type adheres to the RESP protocol where Every command must happen in-order
-// and must have a single RESP reply with the exception of MULTI groups which require
-// up to 2 replies per command:
-// 1. Queued OK
-// 2. Reply
+// RESP protocol event-loop connection where every command must happen in-order
+// and must have a single RESP reply. There are two exceptions to that rule.
 //
-// Great care goes into the lowest latency responses while guaranteeing there
-// will be no blocking when on the event-loop. There are 2 distinct ownership
-// states.
+// 1. "MULTI" transactions where every command may have a
+//			+QUEUED followed by a Reply after "EXEC"
 //
-// 1. Event-Loop - Event-loop may freely process commands and return it's output
-// 2. Worker - Processing of commands must take place in the background
+// 2. PUB/SUB connections which supports push replies from server to client.
 //
-// Worker (background) commands are supported and will be processed in the background which
-// will wakes the event-loop up when there is data to write. More commands may
-// queue up concurrently while the worker is in progress. However, only 1 worker
-// may work at a time and once it buffers data to write then it transfers ownership
-// back to the event-loop. A custom Worker pool was created to handle Worker processing.
-// A worker is opportunistic and will drain as much of the backlog as possible to
-// remove as much CPU cycles as possible from the event-loop.
+// This is optimized for low-latency and tries to flush output as often as possible.
+// There are two distict ownership states for the command executor.
 //
+// 1. Event-Loop
+//	  This is ran from the event-loop thread and cannot block under any circumstance.
+//	  If a command publishes itself as a "Worker" then ownership must transfer to.
 //
-// A custom non-blocking circular list data structure is used for the command backlog
-// of command groupings. It allows the event-loop to "push" new command groups in
-// while a worker "pops" them off concurrently without blocking by making novel use
-// of atomics.
+// 2. Worker
+//    The processing happens on a private goroutine that may execute any kind of command.
+//    A special non-blocking channel implementation was used to communicate between
+//    the event-loop and the worker goroutine.
 //
-// Transactions are supported via the MULTI, EXEC and DISCARD commands and follow the
-// same behavior to the Redis implementation. All commands between a MULTI and EXEC
-// command will happen all at once. If one of those commands is a worker then ALL will
-// be processed at once in the background.
+// Since commands must be executed to its completion before the next command is executed,
+// this can result in a backlog of commands if a command requires "Worker" execution.
+// Furthermore, all commands in a transaction must queue until they can all be executed
+// at once. Again, if any of those commands require "worker" execution then it will backlog
+// all commands in that group as well as subsequent commands.
 type CmdConn struct {
 	api.Context
 
@@ -175,10 +169,8 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 		}
 	}
 
-	wakeSnapshot := atomic.LoadUint64(&c.worker.wakeSnapshot)
 	wakes := atomic.LoadUint64(&c.worker.wakes)
-
-	if wakeSnapshot < wakes {
+	if atomic.LoadUint64(&c.worker.wakeSnapshot) < wakes {
 		// Increment loop wakes counter
 		atomic.AddUint64(&c.stats.wakes, 1)
 		// Snapshot wakes state
@@ -221,12 +213,12 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 	// Let's parse the commands
 		for {
 			// Read next command.
-			packet, complete, args, _, input, err = redcon.ParseNextCommand(input, args[:0])
+			packet, complete, args, _, input, err = resp.ParseNextCommand(input, args[:0])
 
 			if err != nil {
 				c.Action = evio.Close
 				c.Reason = err
-				out = redcon.AppendError(out, err.Error())
+				out = resp.AppendError(out, err.Error())
 				return out, evio.Close
 			}
 
@@ -241,9 +233,7 @@ func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
 				goto AfterParse
 
 			case 1:
-				name := *(*string)(unsafe.Pointer(&args[0]))
-
-				switch strings.ToLower(name) {
+				switch strings.ToLower(*(*string)(unsafe.Pointer(&args[0]))) {
 				case "multi":
 					if c.next.isMulti {
 						c.next.list = append(c.next.list, api.Err("ERR multi cannot nest"))
@@ -420,7 +410,7 @@ AfterParse:
 func (c *CmdConn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
 	// Send +OK for the "multi" command
 	if group.qidx == -1 {
-		out = redcon.AppendOK(out)
+		out = resp.AppendOK(out)
 		group.qidx = 0
 	}
 
@@ -442,7 +432,7 @@ func (c *CmdConn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
 			// Exit as error
 			return out, false
 		}
-		out = redcon.AppendQueued(out)
+		out = resp.AppendQueued(out)
 	}
 	group.qidx = group.size()
 
@@ -458,7 +448,7 @@ func (c *CmdConn) execute(out []byte, group *cmdGroup) ([]byte) {
 		}
 
 		// let's out as a single Array
-		out = redcon.AppendArray(out, int(group.size()))
+		out = resp.AppendArray(out, int(group.size()))
 
 		// Run all the commands
 		for _, command := range group.list {

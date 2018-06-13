@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/genzai-io/sliced/btrdb"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/proto/store"
 )
 

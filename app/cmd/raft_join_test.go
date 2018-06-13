@@ -8,7 +8,7 @@ import (
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
-	"github.com/genzai-io/sliced/common/redcon"
+	"github.com/genzai-io/sliced/common/resp"
 )
 
 var raftJoin = &cmd.RaftJoin{}
@@ -87,7 +87,7 @@ func TestRaftJoin_Marshall(t *testing.T) {
 }
 
 func testMarshalRaftJoin(t *testing.T, c *cmd.RaftJoin) {
-	args, _, err := redcon.ParseCommand(c.Marshal(nil))
+	args, _, err := resp.ParseCommand(c.Marshal(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

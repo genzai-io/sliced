@@ -6,7 +6,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/genzai-io/sliced/app/codec/gjson"
+	"github.com/genzai-io/sliced/common/gjson"
 )
 
 func TestNew(t *testing.T) {

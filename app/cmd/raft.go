@@ -279,15 +279,15 @@ const RaftTimeout = time.Second * 10
 //
 //func appendConfig(future raft.ConfigurationFuture) Command {
 //	var out []byte
-//	out = redcon.AppendArray(out, len(future.Configuration().Servers)+1)
-//	out = redcon.AppendInt(out, int64(future.Index()))
+//	out = resp.AppendArray(out, len(future.Configuration().Servers)+1)
+//	out = resp.AppendInt(out, int64(future.Index()))
 //	for _, key := range future.Configuration().Servers {
 //		j, err := json.Marshal(key)
-//		//out = redcon.AppendBulkString(out, string(key.ID))
+//		//out = resp.AppendBulkString(out, string(key.ID))
 //		if err != nil {
-//			out = redcon.AppendBulkString(out, ""+err.Error())
+//			out = resp.AppendBulkString(out, ""+err.Error())
 //		} else {
-//			out = redcon.AppendBulk(out, j)
+//			out = resp.AppendBulk(out, j)
 //		}
 //	}
 //
@@ -352,15 +352,15 @@ const RaftTimeout = time.Second * 10
 //	}
 //	sort.Strings(keys)
 //	var out []byte
-//	out = redcon.AppendArray(out, len(keys)*2)
+//	out = resp.AppendArray(out, len(keys)*2)
 //	for _, key := range keys {
 //		j, err := json.Marshal(stats[key])
 //
-//		out = redcon.AppendBulkString(out, key)
+//		out = resp.AppendBulkString(out, key)
 //		if err != nil {
-//			out = redcon.AppendBulkString(out, ""+err.Error())
+//			out = resp.AppendBulkString(out, ""+err.Error())
 //		} else {
-//			out = redcon.AppendBulk(out, j)
+//			out = resp.AppendBulk(out, j)
 //		}
 //	}
 //
