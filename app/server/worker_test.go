@@ -33,7 +33,7 @@ func BenchmarkWorker_Signal(b *testing.B) {
 	b.StopTimer()
 
 	b.ReportAllocs()
-	//pool.PrintStats()
+	pool.PrintStats()
 
 	//pool.Stop()
 }

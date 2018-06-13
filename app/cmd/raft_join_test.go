@@ -8,7 +8,7 @@ import (
 
 	"github.com/genzai-io/sliced/app/api"
 	"github.com/genzai-io/sliced/app/cmd"
-	"github.com/movemedical/server-agent/common/redcon"
+	"github.com/genzai-io/sliced/common/redcon"
 )
 
 var raftJoin = &cmd.RaftJoin{}

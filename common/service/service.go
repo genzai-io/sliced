@@ -126,7 +126,9 @@ func (bs *BaseService) Start() error {
 			atomic.StoreUint32(&bs.started, 0)
 			return err
 		}
-		bs.Logger.Debug().Dur("start", time.Now().Sub(started)).Msg("")
+		bs.Logger.Debug().
+			//Dur("start", time.Now().Sub(started)).
+			Msg("")
 		return nil
 	} else {
 		bs.Logger.Debug().Msg("not starting -- already started")
@@ -143,12 +145,12 @@ func (bs *BaseService) OnStart() error { return nil }
 func (bs *BaseService) Stop() error {
 	if atomic.CompareAndSwapUint32(&bs.stopped, 0, 1) {
 		bs.Logger.Debug().Msg("stopping")
-		started := time.Now()
+		//started := time.Now()
 		bs.impl.OnStop()
 		close(bs.Quit)
 		bs.Logger.Debug().
-			Dur("stop", time.Now().Sub(started)).
-			Dur("lifespan", time.Now().Sub(bs.startedTime)).
+			//Dur("stop", time.Now().Sub(started)).
+			//Dur("lifespan", time.Now().Sub(bs.startedTime)).
 			Msg("stopped")
 		return nil
 	} else {

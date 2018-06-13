@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/genzai-io/sliced/app/codec/gjson"
+	"github.com/genzai-io/sliced/common/gjson"
 )
 
 type errorType struct {
