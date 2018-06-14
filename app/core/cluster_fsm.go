@@ -33,7 +33,7 @@ func (f *clusterFSM) Restore(rc io.ReadCloser) error {
 }
 
 type clusterFSMSnapshot struct {
-	store *Store
+	store *Dictionary
 }
 
 func (f *clusterFSMSnapshot) Persist(sink raft.SnapshotSink) error {

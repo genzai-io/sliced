@@ -1,17 +1,18 @@
-package core
+package node
 
 import (
-	"github.com/genzai-io/sliced/common/btrdb"
-	"github.com/genzai-io/sliced/proto/store"
 	"runtime"
+	"sync"
+
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/pool"
-	"sync"
+	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
 // Global node store
-type nodeStore struct {
+type Store struct {
 	service.BaseService
 
 	sync.RWMutex
@@ -28,18 +29,18 @@ type nodeStore struct {
 	tblNodeGroups *btrdb.Table
 }
 
-func newNodeStore(db *btrdb.DB) *nodeStore {
-	n := &nodeStore{
+func NewStore(db *btrdb.DB) *Store {
+	n := &Store{
 		nodesByID:    make(map[string]*Node),
 		groupsByID:   make(map[int64]*NodeGroup),
 		groupsByName: make(map[string]*NodeGroup),
-		tblNodes: newTable(
+		tblNodes: btrdb.NewIDTable(
 			"nodes",
-			func() Serializable { return &store.Node{} },
+			func() btrdb.Serializable { return &store.Node{} },
 		),
-		tblNodeGroups: newTable(
+		tblNodeGroups: btrdb.NewIDTable(
 			"groups",
-			func() Serializable { return &store.NodeGroup{} },
+			func() btrdb.Serializable { return &store.NodeGroup{} },
 		),
 	}
 
@@ -48,7 +49,7 @@ func newNodeStore(db *btrdb.DB) *nodeStore {
 	return n
 }
 
-func (n *nodeStore) OnStart() (err error) {
+func (n *Store) OnStart() (err error) {
 	n.Lock()
 	defer n.Unlock()
 
@@ -142,7 +143,7 @@ type Node struct {
 	local  bool
 
 	// Transport to use to send RESP requests if not local
-	transport NodeTransport
+	transport Transport
 }
 
 func newNode(model *store.Node, local bool) *Node {
@@ -150,7 +151,7 @@ func newNode(model *store.Node, local bool) *Node {
 		groups:    make(map[string]*NodeGroup),
 		model:     *model,
 		local:     local,
-		transport: newNodeTransport(model.Id),
+		transport: newRemoteTransport(model.Id),
 	}
 
 	if !local {

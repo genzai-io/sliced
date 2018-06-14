@@ -5,6 +5,63 @@ import (
 	"sync"
 )
 
+func NewIDTable(name string, factory Factory, secondary ...*TableIndex) *Table {
+	return NewTable(name, factory, IDProjector, secondary...)
+}
+
+type HasName interface {
+	GetName() string
+}
+
+type HasStringId interface {
+	GetId() string
+}
+
+type HasInt32Id interface {
+	GetId() int32
+}
+
+type HasUint32Id interface {
+	GetId() int32
+}
+
+type HasUint64Id interface {
+	GetId() uint64
+}
+
+type HasInt64Id interface {
+	GetId() int64
+}
+
+var IDProjector Projector = func(val interface{}) interface{} {
+	switch v := val.(type) {
+	case HasStringId:
+		return v.GetId()
+
+	case HasInt32Id:
+		return v.GetId()
+
+	case HasUint32Id:
+		return v.GetId()
+
+	case HasInt64Id:
+		return v.GetId()
+
+	case HasUint64Id:
+		return v.GetId()
+	}
+	return ""
+}
+
+var NameProjector Projector = func(val interface{}) interface{} {
+	switch v := val.(type) {
+	case HasName:
+		return v.GetName()
+	}
+	return ""
+}
+
+
 type Schema struct {
 	sync.Mutex
 

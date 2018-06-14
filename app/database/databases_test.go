@@ -1,4 +1,4 @@
-package core
+package database
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"github.com/genzai-io/sliced/proto/store"
 )
 
-func createStoreDB(t *testing.T) *databaseStore {
+func createStoreDB(t *testing.T) *Store {
 	// Create a memory DB
 	db, err := btrdb.Open("store.db")
 	if err != nil {

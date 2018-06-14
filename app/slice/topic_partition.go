@@ -1,4 +1,4 @@
-package core
+package slice
 
 import (
 	"encoding/binary"

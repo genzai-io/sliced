@@ -6,14 +6,19 @@ import (
 	"sync"
 
 	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/database"
+	"github.com/genzai-io/sliced/app/node"
+	"github.com/genzai-io/sliced/app/raft"
 	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
 	"github.com/genzai-io/sliced/proto/store"
 )
 
+type Serializable = btrdb.Serializable
+
 // Database of all Database meta-data and schema membership and cluster membership services.
 // This contains the state of all clusters.
-type Store struct {
+type Dictionary struct {
 	service.BaseService
 
 	Path string
@@ -21,24 +26,22 @@ type Store struct {
 	db   *btrdb.DB
 
 	bootstrap bool
-	// Keep track of all nodes
-	node  *Node
-	nodes map[string]*Node
 
 	raftLock  sync.Mutex
-	raft      *RaftService
-	raftStore *LogStore
+	raft      *raft_service.Service
+	raftStore *raft_service.LogStore
 
-	databases       *databaseStore
+	databases *database.Store
+	nodes     *node.Store
 }
 
-func newStore() *Store {
-	s := &Store{}
+func newStore() *Dictionary {
+	s := &Dictionary{}
 	s.BaseService = *service.NewBaseService(moved.Logger, "store", s)
 	return s
 }
 
-func (s *Store) OnStart() error {
+func (s *Dictionary) OnStart() error {
 	s.Path = moved.SchemaDir
 
 	var name string
@@ -75,31 +78,31 @@ func (s *Store) OnStart() error {
 	return nil
 }
 
-func (s *Store) OnStop() {
+func (s *Dictionary) OnStop() {
 	if err := s.db.Close(); err != nil {
 		s.Logger.Error().AnErr("err", err).Msg("db.Close() error")
 	}
 }
 
-func (s *Store) onExpired(keys []string) {
+func (s *Dictionary) onExpired(keys []string) {
 
 }
 
-func (s *Store) onExpiredSync(key, value string, tx *btrdb.Tx) error {
+func (s *Dictionary) onExpiredSync(key, value string, tx *btrdb.Tx) error {
 	return nil
 }
 
-func (s *Store) createLocalNode() *store.Node {
+func (s *Dictionary) createLocalNode() *store.Node {
 	return &store.Node{
 		Id: "",
 	}
 }
 
-func (s *Store) corruptedNodes(tx *btrdb.Tx) {
+func (s *Dictionary) corruptedNodes(tx *btrdb.Tx) {
 
 }
 
-//func (s *Store) updateLocalNode(tx *btrdb.Tx) error {
+//func (s *Dictionary) updateLocalNode(tx *btrdb.Tx) error {
 //	// Serialize
 //	var err error
 //	var b []byte
@@ -117,11 +120,11 @@ func (s *Store) corruptedNodes(tx *btrdb.Tx) {
 //	return nil
 //}
 //
-//func (s *Store) selectSlices(tx *btrdb.Tx) ([]*store.Slice, error) {
+//func (s *Dictionary) selectSlices(tx *btrdb.Tx) ([]*store.Slice, error) {
 //	return nil, nil
 //}
 //
-//func (s *Store) initDB() error {
+//func (s *Dictionary) initDB() error {
 //	s.mu.Lock()
 //	defer s.mu.Unlock()
 //
@@ -246,7 +249,7 @@ func (s *Store) corruptedNodes(tx *btrdb.Tx) {
 //	})
 //}
 //
-//func (s *Store) selectTopics(tx *btrdb.Tx) {
+//func (s *Dictionary) selectTopics(tx *btrdb.Tx) {
 //	tx.Ascend(schema_topics_index_name, func(key, value string) bool {
 //		return true
 //	})

@@ -1,4 +1,4 @@
-package core
+package raft_service
 
 import (
 	"bufio"

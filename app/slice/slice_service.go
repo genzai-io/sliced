@@ -1,4 +1,4 @@
-package core
+package slice
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	//"github.com/coreos/bbolt"
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/app/raft"
 	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
 )
@@ -24,8 +25,8 @@ type SliceService struct {
 	topicsByName map[string]*TopicSlice
 
 	raftLock  sync.Mutex
-	raft      *RaftService
-	raftStore *LogStore
+	raft      *raft_service.Service
+	raftStore *raft_service.LogStore
 }
 
 func newSliceService(id api.RaftID, path string) *SliceService {

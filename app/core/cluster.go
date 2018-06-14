@@ -9,11 +9,13 @@ import (
 	"sync"
 
 	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/app/node"
+	"github.com/genzai-io/sliced/app/raft"
 	"github.com/genzai-io/sliced/common/raft"
 	"github.com/genzai-io/sliced/common/service"
 )
 
-func newCluster(schema *Store) *ClusterService {
+func newCluster(schema *Dictionary) *ClusterService {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := &ClusterService{
@@ -36,18 +38,18 @@ type ClusterService struct {
 	service.BaseService
 
 	Path  string
-	Nodes []*Node
+	Nodes []*node.Node
 
 	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	schema *Store
+	schema *Dictionary
 
 	// Raft
 	raft      *raft.Raft
 	snapshots raft.SnapshotStore
-	transport *RaftTransport
+	transport *raft_service.RaftTransport
 	//transport  *raft.NetworkTransport
 	store      IRaftStore
 	observerCh chan raft.Observation
@@ -60,8 +62,8 @@ func (s *ClusterService) OnStart() error {
 	// Setup Raft configuration.
 	config := raft.DefaultConfig()
 	config.LocalID = moved.ClusterID
-	raftLogger := &raftLoggerWriter{
-		logger: s.Logger,
+	raftLogger := &raft_service.LoggerWriter{
+		Logger: s.Logger,
 	}
 	config.Logger = log.New(raftLogger, "", 0)
 	var err error
@@ -81,7 +83,7 @@ func (s *ClusterService) OnStart() error {
 
 	//s.transport, err = raft.NewTCPTransport(string(config.LocalID), addr, 3, time.Second*10, raftLogger)
 	//raft.NewDiscardSnapshotStore()
-	s.transport = newRaftTransport(-1, -1, "cluster-transport")
+	s.transport = raft_service.NewRaftTransport(-1, -1, "cluster-transport")
 
 	//err = s.transport.Start()
 	if err != nil {
@@ -90,7 +92,7 @@ func (s *ClusterService) OnStart() error {
 	}
 	//}
 
-	// Create Snapshot Store
+	// Create Snapshot Dictionary
 	if s.Path == ":memory:" {
 		s.snapshots = raft.NewInmemSnapshotStore()
 	} else {
@@ -105,7 +107,7 @@ func (s *ClusterService) OnStart() error {
 		//}
 	}
 
-	// Create Log Store
+	// Create Log Dictionary
 	var logpath string
 	if s.Path == ":memory:" {
 		logpath = ":memory:"
@@ -119,9 +121,9 @@ func (s *ClusterService) OnStart() error {
 	}
 
 	// Create the log store and stable store.
-	s.store, err = NewLogStore(
+	s.store, err = raft_service.NewLogStore(
 		logpath,
-		Low,
+		raft_service.Low,
 		s.Logger.With().Str("logger", "cluster.store").Logger(),
 	)
 	if err != nil {
@@ -208,6 +210,3 @@ func (c *ClusterService) OnStop() {
 	//}
 }
 
-func (c *ClusterService) GetMaster() *Node {
-	return nil
-}

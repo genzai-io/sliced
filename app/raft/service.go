@@ -1,4 +1,4 @@
-package core
+package raft_service
 
 import (
 	"context"
@@ -37,7 +37,7 @@ var (
 	ErrNotRunning = errors.New("not running")
 )
 
-type RaftService struct {
+type Service struct {
 	service.BaseService
 
 	// Context
@@ -60,15 +60,15 @@ type RaftService struct {
 	store *LogStore
 
 	// A map of voting members
-	voters map[string]*Node
+	//voters map[string]*Node
 	// Map of non-voting members
-	nonvoters map[string]*Node
+	//nonvoters map[string]*Node
 	// Map of staging members.
 	// Staging members are currently in the process
 	// of getting caught up with the Leader. Once
 	// it's caught up it will promote to either
 	// voter or non-voter.
-	staging map[string]*Node
+	//staging map[string]*Node
 
 	// Observer
 	observerCh chan raft.Observation
@@ -78,25 +78,25 @@ type RaftService struct {
 	fsm          raft.FSM
 	fsmSnapshot  raft.FSMSnapshot
 	config       *raft.Config
-	loggerWriter *raftLoggerWriter
+	loggerWriter *LoggerWriter
 	raft         *raft.Raft
 	snapshots    raft.SnapshotStore
 	transport    *RaftTransport
 }
 
-func newRaftService(dir string, schema int32, slice int32) *RaftService {
+func newRaftService(dir string, schema int32, slice int32) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c := &RaftService{
+	c := &Service{
 		ctx:        ctx,
 		cancel:     cancel,
 		dir:        dir,
 		schemaID:   schema,
 		sliceID:    slice,
 		status:     RaftStopped,
-		voters:     make(map[string]*Node),
-		nonvoters:  make(map[string]*Node),
-		staging:    make(map[string]*Node),
+		//voters:     make(map[string]*Node),
+		//nonvoters:  make(map[string]*Node),
+		//staging:    make(map[string]*Node),
 		observerCh: make(chan raft.Observation),
 	}
 
@@ -104,7 +104,7 @@ func newRaftService(dir string, schema int32, slice int32) *RaftService {
 	return c
 }
 
-func (rs *RaftService) getLoggerName() string {
+func (rs *Service) getLoggerName() string {
 	if rs.schemaID < 0 {
 		return "raft-cluster"
 	} else {
@@ -112,7 +112,7 @@ func (rs *RaftService) getLoggerName() string {
 	}
 }
 
-func (rs *RaftService) getTransportLoggerName() string {
+func (rs *Service) getTransportLoggerName() string {
 	if rs.schemaID < 0 {
 		return "raft-bus-system"
 	} else {
@@ -120,9 +120,9 @@ func (rs *RaftService) getTransportLoggerName() string {
 	}
 }
 
-func (rs *RaftService) OnStart() error {
-	rs.loggerWriter = &raftLoggerWriter{
-		logger: rs.Logger,
+func (rs *Service) OnStart() error {
+	rs.loggerWriter = &LoggerWriter{
+		Logger: rs.Logger,
 	}
 
 	rs.config = raft.DefaultConfig()
@@ -157,7 +157,7 @@ func (rs *RaftService) OnStart() error {
 	}
 
 	// Start transport
-	rs.transport = newRaftTransport(rs.schemaID, rs.sliceID, rs.getTransportLoggerName())
+	rs.transport = NewRaftTransport(rs.schemaID, rs.sliceID, rs.getTransportLoggerName())
 	err = rs.transport.Start()
 	if err != nil {
 		rs.Logger.Error().Err(err).Msg("raft transport start failed")
@@ -184,7 +184,7 @@ func (rs *RaftService) OnStart() error {
 	return nil
 }
 
-func (rs *RaftService) OnStop() {
+func (rs *Service) OnStop() {
 	rs.muCluster.Lock()
 	defer rs.muCluster.Unlock()
 
@@ -204,7 +204,7 @@ func (rs *RaftService) OnStop() {
 	}
 }
 
-func (rs *RaftService) bootstrap() error {
+func (rs *Service) bootstrap() error {
 	rs.muCluster.Lock()
 	defer rs.muCluster.Unlock()
 
@@ -230,7 +230,7 @@ func (rs *RaftService) bootstrap() error {
 	return nil
 }
 
-func (rs *RaftService) recoverCluster() error {
+func (rs *Service) recoverCluster() error {
 	rs.muCluster.Lock()
 	defer rs.muCluster.Unlock()
 
@@ -243,7 +243,7 @@ func (rs *RaftService) recoverCluster() error {
 
 // Start a goroutine and properly handle the race between a routine
 // starting and incrementing, and exiting and decrementing.
-func (rs *RaftService) goFunc(f func()) {
+func (rs *Service) goFunc(f func()) {
 	rs.wgRoutines.Add(1)
 	go func() {
 		defer rs.wgRoutines.Done()
@@ -251,7 +251,7 @@ func (rs *RaftService) goFunc(f func()) {
 	}()
 }
 
-func (rs *RaftService) observe() {
+func (rs *Service) observe() {
 	for {
 		select {
 		case <-rs.ctx.Done():
@@ -275,54 +275,54 @@ func (rs *RaftService) observe() {
 	}
 }
 
-func (rs *RaftService) nodeRemoved(node *Node) {
-
-}
-
-func (rs *RaftService) nodeLost(node *Node) {
-
-}
-
-func (rs *RaftService) nodeStaging(node *Node) {
-
-}
-
-func (rs *RaftService) nodeOnline(node *Node) {
-
-}
+//func (rs *Service) nodeRemoved(node *Node) {
+//
+//}
+//
+//func (rs *Service) nodeLost(node *Node) {
+//
+//}
+//
+//func (rs *Service) nodeStaging(node *Node) {
+//
+//}
+//
+//func (rs *Service) nodeOnline(node *Node) {
+//
+//}
 
 // Only for RaftTransport RAFTAPPEND
-func (rs *RaftService) Append(payload []byte) api.CommandReply {
-	return rs.transport.handleAppendEntries(payload)
+func (rs *Service) Append(payload []byte) api.CommandReply {
+	return rs.transport.HandleAppendEntries(payload)
 }
 
 // Only for RaftTransport RAFTVOTE
-func (rs *RaftService) Vote(payload []byte) api.CommandReply {
-	return rs.transport.handleRequestVote(payload)
+func (rs *Service) Vote(payload []byte) api.CommandReply {
+	return rs.transport.HandleRequestVote(payload)
 }
 
 // Only for RaftTransport RAFTINSTALL
-func (rs *RaftService) Install(conn *api.Context, arg []byte) api.Command {
+func (rs *Service) Install(conn *api.Context, arg []byte) api.Command {
 	return rs.transport.HandleInstallSnapshot(conn, arg)
 }
 
-func (rs *RaftService) IsLeader() bool {
+func (rs *Service) IsLeader() bool {
 	return rs.raft.Leader() == moved.ClusterAddress
 }
 
-func (rs *RaftService) Leader() raft.ServerAddress {
+func (rs *Service) Leader() raft.ServerAddress {
 	return rs.raft.Leader()
 }
 
-func (rs *RaftService) Stats() map[string]string {
+func (rs *Service) Stats() map[string]string {
 	return rs.raft.Stats()
 }
 
-func (rs *RaftService) State() raft.RaftState {
+func (rs *Service) State() raft.RaftState {
 	return rs.raft.State()
 }
 
-func (rs *RaftService) Configuration() (raft.ConfigurationFuture, error) {
+func (rs *Service) Configuration() (raft.ConfigurationFuture, error) {
 	future := rs.raft.GetConfiguration()
 	if err := future.Error(); err != nil {
 		return future, err
@@ -330,7 +330,7 @@ func (rs *RaftService) Configuration() (raft.ConfigurationFuture, error) {
 	return future, nil
 }
 
-func (rs *RaftService) Bootstrap() error {
+func (rs *Service) Bootstrap() error {
 	rs.Logger.Info().Msg("bootstrap request")
 
 	configFuture := rs.raft.GetConfiguration()
@@ -356,7 +356,7 @@ func (rs *RaftService) Bootstrap() error {
 	return nil
 }
 
-func (rs *RaftService) Demote(nodeID string) error {
+func (rs *Service) Demote(nodeID string) error {
 	rs.Logger.Info().Str("node", nodeID).Str("addr", nodeID).Msg("node demote request")
 
 	serverID := raft.ServerID(nodeID)
@@ -397,7 +397,7 @@ func (rs *RaftService) Demote(nodeID string) error {
 
 // Join joins a node, identified by nodeID and located at addr, to this store.
 // The node must be ready to respond to Raft communications at that address.
-func (rs *RaftService) Join(nodeID string, voter bool) error {
+func (rs *Service) Join(nodeID string, voter bool) error {
 	rs.Logger.Info().Str("node", nodeID).Str("addr", nodeID).Msg("node join request")
 
 	serverID := raft.ServerID(nodeID)
@@ -446,7 +446,7 @@ func (rs *RaftService) Join(nodeID string, voter bool) error {
 	return nil
 }
 
-func (rs *RaftService) Leave(nodeID string) error {
+func (rs *Service) Leave(nodeID string) error {
 	addr := nodeID
 	rs.Logger.Info().Str("node", nodeID).Str("addr", addr).Msg("node leave request")
 

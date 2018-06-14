@@ -1,10 +1,11 @@
-package core
+package database
 
 import (
 	"sync"
 
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/ring"
+	"github.com/genzai-io/sliced/app/slice"
 	"github.com/genzai-io/sliced/common/btrdb"
 	"github.com/genzai-io/sliced/common/service"
 	store_pb "github.com/genzai-io/sliced/proto/store"
@@ -22,11 +23,11 @@ type Database struct {
 
 	id     int32
 	ring   *ring.Ring
-	slices []*Slice
+	slices []*slice.Slice
 
 	tblTopics *btrdb.Table
-	topics    map[int64]*Topic
-	queues    map[int64]*Queue
+	//topics    map[int64]*Topic
+	//queues    map[int64]*queue.Queue
 
 	topicCounter  uint64
 	rollerCounter uint64
@@ -34,12 +35,12 @@ type Database struct {
 	tableCounter  uint64
 }
 
-func newDatabase(db *btrdb.DB, model *store_pb.Database) *Database {
+func NewDatabase(db *btrdb.DB, model *store_pb.Database) *Database {
 	d := &Database{
-		db:     db,
-		model:  *model,
-		topics: make(map[int64]*Topic),
-		queues: make(map[int64]*Queue),
+		db:    db,
+		model: *model,
+		//topics: make(map[int64]*Topic),
+		//queues: make(map[int64]*queue.Queue),
 	}
 	d.BaseService = *service.NewBaseService(moved.Logger, "database", d)
 	return d
@@ -57,7 +58,7 @@ func (s *Database) partition() {
 
 }
 
-type DatabaseCluster struct {
+type Cluster struct {
 	ring   *ring.Ring
-	slices []*Slice
+	slices []*slice.Slice
 }

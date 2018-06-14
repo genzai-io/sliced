@@ -1,3 +1,3 @@
-package core
+package slice
 
 type sliceFSM string

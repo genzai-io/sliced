@@ -1,4 +1,4 @@
-package core
+package topic
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type Roller struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-	topics map[int64]*Topic
+	//topics map[int64]*Topic
 }
 
 func newRoller(model *store.Roller) *Roller {
@@ -26,7 +26,7 @@ func newRoller(model *store.Roller) *Roller {
 	roller := &Roller{
 		ctx:    ctx,
 		cancel: cancel,
-		topics: make(map[int64]*Topic),
+		//topics: make(map[int64]*Topic),
 	}
 
 	roller.BaseService = *service.NewBaseService(moved.Logger, "roller."+model.Name, roller)

@@ -152,10 +152,10 @@ func configureStart(cmd *cobra.Command) {
 		"Path to persist slice data",
 	)
 	cmd.Flags().StringVarP(
-		&moved.WebHost,
+		&moved.StoreDir,
 		"store.path",
 		"s",
-		moved.WebHost,
+		moved.StoreDir,
 		"Path where stores should persist to. Use \":memory:\" to disable disk persistence",
 	)
 	//cmd.Flags().BoolVarP(

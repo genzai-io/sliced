@@ -53,12 +53,12 @@ func (s *ClusterService) ShrinkLog() error {
 
 // Only for RaftTransport RAFTAPPEND
 func (s *ClusterService) Append(payload []byte) api.CommandReply {
-	return s.transport.handleAppendEntries(payload)
+	return s.transport.HandleAppendEntries(payload)
 }
 
 // Only for RaftTransport RAFTVOTE
 func (s *ClusterService) Vote(payload []byte) api.CommandReply {
-	return s.transport.handleRequestVote(payload)
+	return s.transport.HandleRequestVote(payload)
 }
 
 // Only for RaftTransport RAFTINSTALL

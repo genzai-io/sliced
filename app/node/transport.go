@@ -1,4 +1,4 @@
-package core
+package node
 
 import (
 	"time"
@@ -8,24 +8,24 @@ import (
 )
 
 // Inter-node communication / forwarding
-type NodeTransport interface {
+type Transport interface {
 	Send(command api.Command) []byte
 }
 
-type localNodeTransport struct {
+type localTransport struct {
 }
 
-func (t *localNodeTransport) Send(command api.Command) []byte {
+func (t *localTransport) Send(command api.Command) []byte {
 	command.Handle(nil)
 	return nil
 }
 
-type remoteNodeTransport struct {
+type remoteTransport struct {
 	pool *redis.Pool
 }
 
-func newNodeTransport(target string) *remoteNodeTransport {
-	return &remoteNodeTransport{
+func newRemoteTransport(target string) *remoteTransport {
+	return &remoteTransport{
 		pool: &redis.Pool{
 			MaxIdle: 5, // figure 5 should suffice most clusters.
 			//MaxActive:   25,
@@ -49,11 +49,11 @@ func newNodeTransport(target string) *remoteNodeTransport {
 	}
 }
 
-func (t *remoteNodeTransport) Get() redis.Conn {
+func (t *remoteTransport) Get() redis.Conn {
 	return t.pool.Get()
 }
 
-func (t *remoteNodeTransport) Send(command api.Command) []byte {
+func (t *remoteTransport) Send(command api.Command) []byte {
 	conn := t.pool.Get()
 	if conn == nil {
 		return nil

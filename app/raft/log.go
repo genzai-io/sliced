@@ -1,4 +1,4 @@
-package core
+package raft_service
 
 import (
 	"bytes"
@@ -7,11 +7,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type raftLoggerWriter struct {
-	logger zerolog.Logger
+type LoggerWriter struct {
+	Logger zerolog.Logger
 }
 
-func (w *raftLoggerWriter) Write(buf []byte) (int, error) {
+func (w *LoggerWriter) Write(buf []byte) (int, error) {
 	l := len(buf)
 	b := buf
 	lidx := bytes.IndexByte(b, '[')
@@ -33,22 +33,22 @@ func (w *raftLoggerWriter) Write(buf []byte) (int, error) {
 			msg := strings.TrimSpace(string(b))
 			switch level {
 			case "WARN":
-				w.logger.Warn().Str("component", name).Msg(msg)
+				w.Logger.Warn().Str("component", name).Msg(msg)
 			case "DEBU", "DEBUG":
-				w.logger.Debug().Str("component", name).Msg(msg)
+				w.Logger.Debug().Str("component", name).Msg(msg)
 			case "INFO":
-				w.logger.Info().Str("component", name).Msg(msg)
+				w.Logger.Info().Str("component", name).Msg(msg)
 			case "ERR", "ERRO", "ERROR":
-				w.logger.Error().Str("component", name).Msg(msg)
+				w.Logger.Error().Str("component", name).Msg(msg)
 
 			default:
-				w.logger.Info().Str("component", name).Msg(msg)
+				w.Logger.Info().Str("component", name).Msg(msg)
 			}
 		} else {
-			w.logger.Info().Str("component", "raft").Msg(strings.TrimSpace(string(buf)))
+			w.Logger.Info().Str("component", "raft").Msg(strings.TrimSpace(string(buf)))
 		}
 	} else {
-		w.logger.Info().Str("component", "raft").Msg(strings.TrimSpace(string(buf)))
+		w.Logger.Info().Str("component", "raft").Msg(strings.TrimSpace(string(buf)))
 	}
 	return l, nil
 }

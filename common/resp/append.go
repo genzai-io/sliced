@@ -7,9 +7,9 @@ import (
 )
 
 var (
-	errUnbalancedQuotes       = &errProtocol{"PROT unbalanced quotes in request"}
-	errInvalidBulkLength      = &errProtocol{"PROT invalid bulk length"}
-	errInvalidMultiBulkLength = &errProtocol{"PROT invalid multibulk length"}
+	errUnbalancedQuotes       = &errProtocol{"PROTO unbalanced quotes in request"}
+	errInvalidBulkLength      = &errProtocol{"PROTO invalid bulk length"}
+	errInvalidMultiBulkLength = &errProtocol{"PROTO invalid multibulk length"}
 	errDetached               = errors.New("ERR detached")
 	errIncompleteCommand      = errors.New("ERR incomplete command")
 	errTooMuchData            = errors.New("ERR too much data")
@@ -29,13 +29,13 @@ type Kind int
 const (
 	// Redis is returned for Redis protocol commands
 	Redis Kind = iota
-	// Tile38 is returnd for Tile38 native protocol commands
+	// Tile38 is returned for Tile38 native protocol commands
 	Tile38
-	// Telnet is returnd for plain telnet commands
+	// Telnet is returned for plain telnet commands
 	Telnet
 )
 
-var errInvalidMessage = &errProtocol{"PROT invalid message"}
+var errInvalidMessage = &errProtocol{"PROTO invalid message"}
 
 func parseInt(b []byte) (int, bool) {
 	if len(b) == 1 && b[0] >= '0' && b[0] <= '9' {

@@ -22,7 +22,7 @@ func init() {
 type Service struct {
 	service.BaseService
 
-	Schema  *Store
+	Schema  *Dictionary
 	Cluster *ClusterService
 	Drives  *fs.DriveService
 }

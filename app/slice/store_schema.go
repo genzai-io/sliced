@@ -1,4 +1,4 @@
-package core
+package slice
 
 import (
 	"github.com/genzai-io/sliced/common/btrdb"

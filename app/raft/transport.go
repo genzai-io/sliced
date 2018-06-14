@@ -1,7 +1,7 @@
 // Provides a raft transport using the Redis RESP protocol allowing the
 // same Event Loops and command processing to be used for as many Raft
 // clusters as desired.
-package core
+package raft_service
 
 import (
 	"bufio"
@@ -59,7 +59,7 @@ type RaftTransport struct {
 	installing *snapshotHandler
 }
 
-func newRaftTransport(schemaID int32, sliceID int32, loggerName string) *RaftTransport {
+func NewRaftTransport(schemaID int32, sliceID int32, loggerName string) *RaftTransport {
 	t := &RaftTransport{
 		schemaID: schemaID,
 		sliceID:  sliceID,
@@ -301,7 +301,7 @@ func (t *RaftTransport) AppendEntries(id raft.ServerID, target raft.ServerAddres
 	}
 }
 
-func (t *RaftTransport) handleAppendEntries(payload []byte) api.CommandReply {
+func (t *RaftTransport) HandleAppendEntries(payload []byte) api.CommandReply {
 	var rpc raft.RPC
 	var aer raft.AppendEntriesRequest
 	if !decodeAppendEntriesRequest(payload, &aer) {
@@ -410,7 +410,7 @@ func (t *RaftTransport) RequestVote(id raft.ServerID, target raft.ServerAddress,
 	return nil
 }
 
-func (t *RaftTransport) handleRequestVote(payload []byte) api.CommandReply {
+func (t *RaftTransport) HandleRequestVote(payload []byte) api.CommandReply {
 	var aer raft.RequestVoteRequest
 	if !decodeVoteRequest([]byte(payload), &aer) {
 		//if err := json.Unmarshal(vote, &aer); err != nil {
@@ -709,9 +709,9 @@ func (t *RaftTransport) HandleInstallSnapshot(ctx *cmd.Context, arg []byte) cmd.
 //			return
 //		}
 //	case "raftrequestvote":
-//		res, err = t.handleRequestVote(cmd)
+//		res, err = t.HandleRequestVote(cmd)
 //	case "raftappendentries":
-//		res, err = t.handleAppendEntries(cmd)
+//		res, err = t.HandleAppendEntries(cmd)
 //	}
 //	if err != nil {
 //		if err == errInvalidNumberOfArgs {

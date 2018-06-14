@@ -1,4 +1,4 @@
-package core
+package slice
 
 // Represents a Slice of a Topic. Each Slice is essentially
 // a completely independent structure from all other slices,

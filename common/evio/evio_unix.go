@@ -348,7 +348,7 @@ func loopRun(s *server, l *loop) {
 				return loopRead(s, l, c)
 			}
 		}); err != nil {
-
+			break loop
 		} else {
 			break loop
 		}

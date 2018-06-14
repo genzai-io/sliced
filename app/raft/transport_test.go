@@ -1,11 +1,11 @@
-package core
+package raft_service
 
 import (
 	"testing"
 )
 
 func TestRaftTransport_AppendEntries(t *testing.T) {
-	//transport := newRaftTransport(-1, "raft-transport")
+	//transport := NewRaftTransport(-1, "raft-transport")
 	//conn, err := transport.getConn("192.168.231.12:10005")
 	//if err != nil {
 	//	t.Fatal(err)

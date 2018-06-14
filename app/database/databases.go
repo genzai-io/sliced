@@ -1,17 +1,18 @@
-package core
+package database
 
 import (
 	"strings"
 	"time"
 
-	"github.com/genzai-io/sliced/common/btrdb"
-	"github.com/genzai-io/sliced/proto/store"
 	"sync"
-	"github.com/genzai-io/sliced/common/service"
+
 	"github.com/genzai-io/sliced"
+	"github.com/genzai-io/sliced/common/btrdb"
+	"github.com/genzai-io/sliced/common/service"
+	"github.com/genzai-io/sliced/proto/store"
 )
 
-type databaseStore struct {
+type Store struct {
 	sync.RWMutex
 	service.BaseService
 
@@ -24,13 +25,13 @@ type databaseStore struct {
 	tblDatabases *btrdb.Table
 }
 
-func newDatabases(db *btrdb.DB) *databaseStore {
-	d := &databaseStore{
+func newDatabases(db *btrdb.DB) *Store {
+	d := &Store{
 		db: db,
-		tblDatabases: newTable(
+		tblDatabases: btrdb.NewIDTable(
 			"db",
-			func() Serializable { return &store.Database{} },
-			btrdb.NewTableIndex("names", nameProjector),
+			func() btrdb.Serializable { return &store.Database{} },
+			btrdb.NewTableIndex("names", btrdb.NameProjector),
 		),
 	}
 
@@ -41,7 +42,7 @@ func newDatabases(db *btrdb.DB) *databaseStore {
 	return d
 }
 
-func (d *databaseStore) OnStart() error {
+func (d *Store) OnStart() error {
 	return d.db.Update(func(tx *btrdb.Tx) error {
 		if err := d.tblDatabases.Build(tx); err != nil {
 			return err
@@ -51,7 +52,7 @@ func (d *databaseStore) OnStart() error {
 	})
 }
 
-func (d *databaseStore) OnStop() {
+func (d *Store) OnStop() {
 	d.Lock()
 	defer d.Unlock()
 
@@ -64,7 +65,7 @@ func (d *databaseStore) OnStop() {
 	}
 }
 
-func (t *databaseStore) load(tx *btrdb.Tx) (err error) {
+func (t *Store) load(tx *btrdb.Tx) (err error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -86,7 +87,7 @@ func (t *databaseStore) load(tx *btrdb.Tx) (err error) {
 
 		database, ok := t.byID[model.Id]
 		if !ok {
-			database := newDatabase(t.db, model)
+			database := NewDatabase(t.db, model)
 			created = append(created, database)
 			t.byID[model.Id] = database
 		} else {
@@ -111,7 +112,7 @@ func (t *databaseStore) load(tx *btrdb.Tx) (err error) {
 	return
 }
 
-func (t *databaseStore) selectAll(index *btrdb.TableIndex) (databases []*store.Database, err error) {
+func (t *Store) selectAll(index *btrdb.TableIndex) (databases []*store.Database, err error) {
 	databases = make([]*store.Database, 0, 8)
 
 	err = t.db.View(func(tx *btrdb.Tx) error {
@@ -131,7 +132,7 @@ func (t *databaseStore) selectAll(index *btrdb.TableIndex) (databases []*store.D
 }
 
 // Safely creates and inserts a new store.Database document
-func (t *databaseStore) Insert(name string) (database *store.Database, err error) {
+func (t *Store) Insert(name string) (database *store.Database, err error) {
 	database = nil
 
 	err = t.db.Update(func(tx *btrdb.Tx) error {
