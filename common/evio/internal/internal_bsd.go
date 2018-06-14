@@ -8,6 +8,8 @@ package internal
 
 import (
 	"syscall"
+
+	"github.com/murlokswarm/errors"
 )
 
 // Poll ...
@@ -53,16 +55,29 @@ func (p *Poll) Trigger(note interface{}) error {
 	return err
 }
 
+// Wake ...
 func (p *Poll) Wake(fd int) error {
-	_, err := syscall.Kevent(p.fd,
-		[]syscall.Kevent_t{{Ident: uint64(fd),
-			Flags: syscall.EV_ADD, Filter: syscall.EVFILT_WRITE}},
-		nil, nil)
+	// Push a change immediately for the descriptor.
+	_, err := syscall.Kevent(
+		p.fd,
+		[]syscall.Kevent_t{{
+			Ident:  uint64(fd),
+			Flags:  syscall.EV_ADD,
+			Filter: syscall.EVFILT_WRITE,
+		}},
+		nil,
+		nil,
+	)
 	return err
 }
 
 // Wait ...
-func (p *Poll) Wait(iter func(fd int, note interface{}) error) error {
+func (p *Poll) Wait(iter func(fd int, note interface{}) error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New("panicked")
+		}
+	}()
 	events := make([]syscall.Kevent_t, 128)
 	for {
 		n, err := syscall.Kevent(p.fd, p.changes, events, nil)

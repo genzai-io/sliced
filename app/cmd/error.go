@@ -1,5 +1,5 @@
 package cmd
 
 var (
-	ERR_InvalidParams = Err("ERR invalid params")
+	ErrInvalidParams = Err("ERR invalid params")
 )

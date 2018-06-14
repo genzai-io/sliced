@@ -315,6 +315,7 @@ func loopNote(s *server, l *loop, note interface{}) error {
 	return err
 }
 
+
 func loopRun(s *server, l *loop) {
 	defer func() {
 		//fmt.Println("-- loop stopped --", l.idx)
@@ -326,25 +327,33 @@ func loopRun(s *server, l *loop) {
 		go loopTicker(s, l)
 	}
 
+	loop:
 	//fmt.Println("-- loop started --", l.idx)
-	l.poll.Wait(func(fd int, note interface{}) error {
-		if fd == 0 {
-			return loopNote(s, l, note)
+	for {
+		if err := l.poll.Wait(func(fd int, note interface{}) error {
+			if fd == 0 {
+				return loopNote(s, l, note)
+			}
+			c := l.fdconns[fd]
+			switch {
+			case c == nil:
+				return loopAccept(s, l, fd)
+			case !c.opened:
+				return loopOpened(s, l, c)
+			case len(c.out) > 0:
+				return loopWrite(s, l, c)
+			case c.action != None:
+				return loopAction(s, l, c)
+			default:
+				return loopRead(s, l, c)
+			}
+		}); err != nil {
+
+		} else {
+			break loop
 		}
-		c := l.fdconns[fd]
-		switch {
-		case c == nil:
-			return loopAccept(s, l, fd)
-		case !c.opened:
-			return loopOpened(s, l, c)
-		case len(c.out) > 0:
-			return loopWrite(s, l, c)
-		case c.action != None:
-			return loopAction(s, l, c)
-		default:
-			return loopRead(s, l, c)
-		}
-	})
+	}
+
 }
 
 func loopTicker(s *server, l *loop) {

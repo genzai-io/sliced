@@ -54,7 +54,7 @@ func (c *RaftDemote) Parse(args [][]byte) Command {
 		// Parse schema
 		schemaID, err := strconv.Atoi(string(args[1]))
 		if err != nil {
-			return Err("ERR invalid schema id: " + string(args[2]))
+			return Err("ERR invalid database id: " + string(args[2]))
 		}
 		cmd.ID.DatabaseID = int32(schemaID)
 

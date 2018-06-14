@@ -5,27 +5,27 @@ import (
 	"github.com/genzai-io/sliced/common/resp"
 )
 
-func init() { api.Register(&DBCreate{}) }
+func init() { api.Register(&DBAddSlice{}) }
 
 // Demotes a Voting member to a Non-Voting member.
-type DBCreate struct {
+type DBAddSlice struct {
 	Name_ string
 }
 
-func (c *DBCreate) Name() string   { return "+DB" }
-func (c *DBCreate) Help() string   { return "" }
-func (c *DBCreate) IsError() bool  { return false }
-func (c *DBCreate) IsWorker() bool { return true }
+func (c *DBAddSlice) Name() string   { return "+SLICE" }
+func (c *DBAddSlice) Help() string   { return "" }
+func (c *DBAddSlice) IsError() bool  { return false }
+func (c *DBAddSlice) IsWorker() bool { return true }
 
-func (c *DBCreate) Marshal(buf []byte) []byte {
+func (c *DBAddSlice) Marshal(buf []byte) []byte {
 	buf = resp.AppendArray(buf, 2)
 	buf = resp.AppendBulkString(buf, c.Name())
 	buf = resp.AppendBulkString(buf, c.Name_)
 	return buf
 }
 
-func (c *DBCreate) Parse(args [][]byte) Command {
-	cmd := &DBCreate{}
+func (c *DBAddSlice) Parse(args [][]byte) Command {
+	cmd := &DBAddSlice{}
 
 	switch len(args) {
 	default:
@@ -39,7 +39,7 @@ func (c *DBCreate) Parse(args [][]byte) Command {
 	return cmd
 }
 
-func (c *DBCreate) Handle(ctx *Context) Reply {
+func (c *DBAddSlice) Handle(ctx *Context) Reply {
 	reply := api.Array([]Reply{
 		api.Int(10),
 		String("hi"),

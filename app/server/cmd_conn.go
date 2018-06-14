@@ -464,6 +464,7 @@ func (c *CmdConn) execute(out []byte, group *cmdGroup) ([]byte) {
 	return out
 }
 
+//
 func (c *CmdConn) wake() {
 	ev := c.ev
 	if ev != nil {
@@ -487,7 +488,8 @@ func (c *cmdGroup) clear() {
 	c.isWorker = false
 	c.qidx = -1
 	// Reset already allocated slice
-	c.list = c.list[:0]
+	//c.list = c.list[:0]
+	c.list = nil
 }
 
 // Size of the list
@@ -525,6 +527,7 @@ func (c *CmdConn) stopWorker() {
 func (c *CmdConn) workerCaughtUp() {
 }
 
+// Must be called from event-loop
 func (c *CmdConn) sendToWorker(group *cmdGroup) {
 	atomic.AddInt32(&c.worker.counter, 1)
 
@@ -532,58 +535,59 @@ func (c *CmdConn) sendToWorker(group *cmdGroup) {
 		c.worker.open = true
 		// Ensure there is only ever a single goroutine running in the background
 		c.worker.wg.Wait()
-
-		c.worker.wg.Add(1)
-		go func() {
-			defer c.worker.wg.Done()
-			var msg *cmdGroup
-			var count int32
-
-			for {
-				// Wait to receive next msg
-				c.worker.waitingSince = time.Now().UnixNano()
-				msg = c.worker.ch.Recv()
-				if msg == stopMsg || msg == nil {
-					c.worker.waitingSince = 0
-					count = atomic.AddInt32(&c.worker.counter, -1)
-					return
-				}
-
-				// Process the group
-				var b []byte
-				b = c.execute(b, group)
-				group.clear()
-
-				// Decrement count
-				count = atomic.AddInt32(&c.worker.counter, -1)
-
-				// Flush write
-				atomic.AddInt32(&c.worker.outCount, 1)
-				c.worker.outCh.Send(&b)
-
-				// Increment wake count
-				wakes := atomic.AddUint64(&c.worker.wakes, 1)
-
-				// Did we catch up?
-				if count == 0 {
-					// Transfer ownership back to the event-loop
-					atomic.StoreInt32(&c.ownership, loopOwner)
-					c.workerCaughtUp()
-				}
-
-				// Determine if the event-loop is behind.
-				// If it is then, we can guarantee that the next once
-				// the original wake happens, it will process the changes
-				// just made.
-				if atomic.LoadUint64(&c.worker.wakeSnapshot) == wakes-1 {
-					// Wake the event loop
-					c.wake()
-				}
-			}
-		}()
+		c.workerLoop()
 	}
 
 	c.worker.ch.Send(group)
+}
+
+func (c *CmdConn) workerLoop() {
+	c.worker.wg.Add(1)
+	go func() {
+		defer c.worker.wg.Done()
+		var msg *cmdGroup
+		var count int32
+
+		for {
+			// Wait to receive next msg
+			c.worker.waitingSince = time.Now().UnixNano()
+			msg = c.worker.ch.Recv()
+			if msg == stopMsg || msg == nil {
+				c.worker.waitingSince = 0
+				count = atomic.AddInt32(&c.worker.counter, -1)
+				return
+			}
+
+			// Process the group
+			var b []byte
+			b = c.execute(b, msg)
+			msg.clear()
+
+			// Decrement count
+			count = atomic.AddInt32(&c.worker.counter, -1)
+
+			// Flush write
+			atomic.AddInt32(&c.worker.outCount, 1)
+			c.worker.outCh.Send(&b)
+
+			// Increment wake count
+			wakes := atomic.AddUint64(&c.worker.wakes, 1)
+
+			// Did we catch up?
+			if count == 0 {
+				// Transfer ownership back to the event-loop
+				atomic.StoreInt32(&c.ownership, loopOwner)
+				c.workerCaughtUp()
+			}
+
+			// Determine if the event-loop is behind.
+			// Let's try to save a syscall to "epoll / kqueue / iocp"
+			if atomic.LoadUint64(&c.worker.wakeSnapshot) == wakes-1 {
+				// Wake the event loop
+				c.wake()
+			}
+		}
+	}()
 }
 
 // Channel of *cmdGroup
@@ -619,4 +623,7 @@ func (ch *outChan) Recv() []byte {
 
 func (c *CmdConn) tick() {
 	// Determine if there is a weird state that needs to be fixed
+	if c.Reason != nil && !c.done {
+		c.wake()
+	}
 }
