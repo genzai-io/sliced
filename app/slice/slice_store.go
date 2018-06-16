@@ -3,6 +3,6 @@ package slice
 import "github.com/genzai-io/sliced/common/raft"
 
 //
-type SliceStore struct {
+type Store struct {
 	raft.StableStore
 }

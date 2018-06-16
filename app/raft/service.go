@@ -84,16 +84,16 @@ type Service struct {
 	transport    *RaftTransport
 }
 
-func newRaftService(dir string, schema int32, slice int32) *Service {
+func NewService(dir string, databaseID int32, sliceID int32) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	c := &Service{
-		ctx:        ctx,
-		cancel:     cancel,
-		dir:        dir,
-		schemaID:   schema,
-		sliceID:    slice,
-		status:     RaftStopped,
+		ctx:      ctx,
+		cancel:   cancel,
+		dir:      dir,
+		schemaID: databaseID,
+		sliceID:  sliceID,
+		status:   RaftStopped,
 		//voters:     make(map[string]*Node),
 		//nonvoters:  make(map[string]*Node),
 		//staging:    make(map[string]*Node),

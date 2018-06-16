@@ -105,6 +105,13 @@ func NewConn(ev evio.Conn) *CmdConn {
 	return conn
 }
 
+func (c *CmdConn) tick() {
+	// Determine if there is a weird state that needs to be fixed
+	if c.Reason != nil && !c.done {
+		c.wake()
+	}
+}
+
 func (c *CmdConn) Detach() error {
 	c.Action = evio.Detach
 	c.ev.Wake()
@@ -500,7 +507,7 @@ type cmdConnWorker struct {
 	wg      sync.WaitGroup
 	mutex   uintptr
 	counter int32
-	ch      workerChan
+	ch      cmdConnWorkerChan
 
 	wakeSnapshot uint64
 	wakes        uint64
@@ -508,7 +515,7 @@ type cmdConnWorker struct {
 	open         bool
 	waitingSince int64
 
-	outCh    outChan
+	outCh    bufferChan
 	outCount int32
 }
 
@@ -591,24 +598,24 @@ func (c *CmdConn) workerLoop() {
 }
 
 // Channel of *cmdGroup
-type workerChan struct {
+type cmdConnWorkerChan struct {
 	base fastlane.ChanPointer
 }
 
-func (ch *workerChan) Send(value *cmdGroup) {
+func (ch *cmdConnWorkerChan) Send(value *cmdGroup) {
 	ch.base.Send(unsafe.Pointer(value))
 }
 
-func (ch *workerChan) Recv() *cmdGroup {
+func (ch *cmdConnWorkerChan) Recv() *cmdGroup {
 	return (*cmdGroup)(ch.base.Recv())
 }
 
 // Channel of []byte
-type outChan struct {
+type bufferChan struct {
 	base fastlane.ChanPointer
 }
 
-func (ch *outChan) Send(value *[]byte) {
+func (ch *bufferChan) Send(value *[]byte) {
 	// Handle nil
 	if value == nil {
 		value = &emptyBuffer
@@ -616,14 +623,8 @@ func (ch *outChan) Send(value *[]byte) {
 	ch.base.Send(unsafe.Pointer(value))
 }
 
-func (ch *outChan) Recv() []byte {
+func (ch *bufferChan) Recv() []byte {
 	// Dereference to []byte
 	return *(*[]byte)(ch.base.Recv())
 }
 
-func (c *CmdConn) tick() {
-	// Determine if there is a weird state that needs to be fixed
-	if c.Reason != nil && !c.done {
-		c.wake()
-	}
-}

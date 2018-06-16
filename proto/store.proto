@@ -3,6 +3,9 @@ syntax = "proto3";
 option go_package = "github.com/genzai-io/sliced/proto/store";
 package store_pb;
 
+option java_package = "io.genzai.sliced";
+option java_outer_classname = "StoreProtos";
+
 enum Level {
     MISSION = 0;
     BUSINESS = 1;

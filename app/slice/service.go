@@ -13,7 +13,7 @@ import (
 )
 
 // Each slice has it's own independent store
-type SliceService struct {
+type Service struct {
 	service.BaseService
 
 	ID   uint16
@@ -29,8 +29,8 @@ type SliceService struct {
 	raftStore *raft_service.LogStore
 }
 
-func newSliceService(id api.RaftID, path string) *SliceService {
-	s := &SliceService{
+func newService(id api.RaftID, path string) *Service {
+	s := &Service{
 		Path: path,
 	}
 
@@ -39,7 +39,7 @@ func newSliceService(id api.RaftID, path string) *SliceService {
 	return s
 }
 
-func (b *SliceService) OnStart() error {
+func (b *Service) OnStart() error {
 	var err error
 	b.db, err = btrdb.OpenWithConfig(b.Path, btrdb.Config{
 		SyncPolicy:           btrdb.EverySecond,
@@ -61,25 +61,25 @@ func (b *SliceService) OnStart() error {
 	return nil
 }
 
-func (b *SliceService) OnStop() {
+func (b *Service) OnStop() {
 	if err := b.db.Close(); err != nil {
 		b.Logger.Error().AnErr("err", err).Msg("db.Close() error OnStop()")
 	}
 }
 
-func (b *SliceService) Backup() {
+func (b *Service) Backup() {
 
 }
 
-func (g *SliceService) onExpired(keys []string) {
+func (g *Service) onExpired(keys []string) {
 
 }
 
-func (g *SliceService) onExpiredSync(key, value string, tx *btrdb.Tx) error {
+func (g *Service) onExpiredSync(key, value string, tx *btrdb.Tx) error {
 	return nil
 }
 
-//func (s *SliceService) loadSlices() error {
+//func (s *Service) loadSlices() error {
 //	tx, err := s.db.Begin(false)
 //	if err != nil {
 //		return err

@@ -37,7 +37,7 @@ type Dictionary struct {
 
 func newStore() *Dictionary {
 	s := &Dictionary{}
-	s.BaseService = *service.NewBaseService(moved.Logger, "store", s)
+	s.BaseService = *service.NewBaseService(moved.Logger, "dict", s)
 	return s
 }
 
@@ -70,10 +70,14 @@ func (s *Dictionary) OnStart() error {
 		return err
 	}
 
-	//err = s.initDB()
-	//if err != nil {
-	//	return err
-	//}
+	// Start up raft
+	s.raft = raft_service.NewService(moved.StoreDir, -1, -1)
+	err = s.raft.Start()
+
+	if err != nil {
+		s.db.Close()
+		return err
+	}
 
 	return nil
 }

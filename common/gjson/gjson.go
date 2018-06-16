@@ -34,6 +34,7 @@ const (
 	True
 	// JSON is a raw block of JSON
 	JSON
+	Bool
 )
 
 // String returns a string representation of the type.

@@ -47,6 +47,12 @@ func NewDatabase(db *btrdb.DB, model *store_pb.Database) *Database {
 }
 
 func (d *Database) OnStart() error {
+	// Load slices
+	// Load dictionary
+	// |--- Topics
+	// |--- Queues
+	// |--- Tables
+
 	return nil
 }
 

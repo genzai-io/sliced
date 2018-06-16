@@ -5,7 +5,7 @@ package slice
 // but shares the same ID and other meta-data.
 type TopicSlice struct {
 	parent *Topic
-	slice  *SliceService
+	slice  *Service
 	key    string
 
 	// The root or default partition

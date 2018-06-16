@@ -600,7 +600,7 @@ func (r *Raft) Leader() ServerAddress {
 // for the command to be started. This must be run on the leader or it
 // will fail.
 func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
-	metrics.IncrCounter([]string{"raft", "apply"}, 1)
+	//metrics.IncrCounter([]string{"raft", "apply"}, 1)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -631,7 +631,7 @@ func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 // limit the amount of time we wait for the command to be started. This
 // must be run on the leader or it will fail.
 func (r *Raft) Barrier(timeout time.Duration) Future {
-	metrics.IncrCounter([]string{"raft", "barrier"}, 1)
+	//metrics.IncrCounter([]string{"raft", "barrier"}, 1)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -659,7 +659,7 @@ func (r *Raft) Barrier(timeout time.Duration) Future {
 // the leader. This can be done to prevent stale reads when a
 // new leader has potentially been elected.
 func (r *Raft) VerifyLeader() Future {
-	metrics.IncrCounter([]string{"raft", "verify_leader"}, 1)
+	//metrics.IncrCounter([]string{"raft", "verify_leader"}, 1)
 	verifyFuture := &verifyFuture{}
 	verifyFuture.init()
 	select {

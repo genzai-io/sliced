@@ -9,9 +9,9 @@ import (
 
 var (
 	TblTopic = &tblTopic{
-		Table: newTable(
+		Table: btrdb.NewIDTable(
 			"t",
-			func() Serializable { return &store.Topic{} },
+			func() btrdb.Serializable { return &store.Topic{} },
 		),
 	}
 )

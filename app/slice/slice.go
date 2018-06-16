@@ -10,7 +10,7 @@ type Slice struct {
 	owned bool
 	nodes []*node.Node
 
-	service *SliceService
+	service *Service
 }
 
 func newSlice(model *store.Slice, owned bool, nodes []*node.Node) *Slice {
@@ -21,7 +21,7 @@ func newSlice(model *store.Slice, owned bool, nodes []*node.Node) *Slice {
 	}
 
 	if owned {
-		//s.service = newSliceService()
+		//s.service = newService()
 	}
 
 	return s

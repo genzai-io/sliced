@@ -240,6 +240,8 @@ type Daemon struct {
 }
 
 func (d *Daemon) OnStart() error {
+	//go metrics.Log(metrics.DefaultRegistry, 5 * time.Second, log.New(os.Stderr, "metrics: ", log.Lmicroseconds))
+
 	// Handle os signals.
 	c := make(chan os.Signal, 1)
 	slogger := moved.Logger.With().Str("logger", "os.signal").Logger()
