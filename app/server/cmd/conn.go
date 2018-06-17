@@ -1,4 +1,4 @@
-package server
+package cmd
 
 import (
 	"errors"
@@ -42,7 +42,7 @@ const (
 	workerOwner int32 = 1
 )
 
-// Non-Blocking RESP Connection
+// Non-Blocking RESP Connection using evio framework
 //
 // RESP protocol event-loop connection where every command must happen in-order
 // and must have a single RESP reply. There are two exceptions to that rule.
@@ -69,7 +69,7 @@ const (
 // Furthermore, all commands in a transaction must queue until they can all be executed
 // at once. Again, if any of those commands require "worker" execution then it will backlog
 // all commands in that group as well as subsequent commands.
-type CmdConn struct {
+type Conn struct {
 	api.Context
 
 	ID uint64
@@ -97,34 +97,34 @@ type CmdConn struct {
 	stats connStats
 }
 
-func NewConn(ev evio.Conn) *CmdConn {
-	conn := &CmdConn{
+func NewConn(ev evio.Conn) *Conn {
+	conn := &Conn{
 		ev: ev,
 	}
 	conn.onData = conn.OnData
 	return conn
 }
 
-func (c *CmdConn) tick() {
+func (c *Conn) tick() {
 	// Determine if there is a weird state that needs to be fixed
 	if c.Reason != nil && !c.done {
 		c.wake()
 	}
 }
 
-func (c *CmdConn) Detach() error {
+func (c *Conn) Detach() error {
 	c.Action = evio.Detach
 	c.ev.Wake()
 	return nil
 }
 
-func (c *CmdConn) OnDetach(rwc io.ReadWriteCloser) {
+func (c *Conn) OnDetach(rwc io.ReadWriteCloser) {
 	if rwc != nil {
 		rwc.Close()
 	}
 }
 
-func (c *CmdConn) Close() error {
+func (c *Conn) Close() error {
 	c.Action = evio.Close
 	conn := c.ev
 
@@ -134,22 +134,22 @@ func (c *CmdConn) Close() error {
 	return nil
 }
 
-func (c *CmdConn) OnClosed() {
+func (c *Conn) OnClosed() {
 	c.done = true
 	c.Action = evio.Close
 	c.ev = nil
 	c.stopWorker()
 }
 
-func (c *CmdConn) Conn() evio.Conn {
+func (c *Conn) Conn() evio.Conn {
 	return c.ev
 }
 
-func (c *CmdConn) Stats() {
+func (c *Conn) Stats() {
 }
 
 // This is not thread safe
-func (c *CmdConn) OnData(in []byte) ([]byte, evio.Action) {
+func (c *Conn) OnData(in []byte) ([]byte, evio.Action) {
 	var (
 		out    []byte
 		input  []byte
@@ -414,7 +414,7 @@ AfterParse:
 	return out, action
 }
 
-func (c *CmdConn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
+func (c *Conn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
 	// Send +OK for the "multi" command
 	if group.qidx == -1 {
 		out = resp.AppendOK(out)
@@ -446,7 +446,7 @@ func (c *CmdConn) sendQueued(out []byte, group *cmdGroup) ([]byte, bool) {
 	return out, true
 }
 
-func (c *CmdConn) execute(out []byte, group *cmdGroup) ([]byte) {
+func (c *Conn) execute(out []byte, group *cmdGroup) ([]byte) {
 	if group.isMulti {
 		var ok bool
 		out, ok = c.sendQueued(out, group)
@@ -472,7 +472,7 @@ func (c *CmdConn) execute(out []byte, group *cmdGroup) ([]byte) {
 }
 
 //
-func (c *CmdConn) wake() {
+func (c *Conn) wake() {
 	ev := c.ev
 	if ev != nil {
 		if err := c.ev.Wake(); err != nil {
@@ -520,7 +520,7 @@ type cmdConnWorker struct {
 }
 
 // This will close the background goroutine
-func (c *CmdConn) stopWorker() {
+func (c *Conn) stopWorker() {
 	if c.worker.open {
 		c.sendToWorker(stopMsg)
 		c.worker.open = false
@@ -531,11 +531,11 @@ func (c *CmdConn) stopWorker() {
 // is transferred back to the event-loop.
 // Since the ownership is not the worker anymore, this method
 // is not safe to modify the working state.
-func (c *CmdConn) workerCaughtUp() {
+func (c *Conn) workerCaughtUp() {
 }
 
 // Must be called from event-loop
-func (c *CmdConn) sendToWorker(group *cmdGroup) {
+func (c *Conn) sendToWorker(group *cmdGroup) {
 	atomic.AddInt32(&c.worker.counter, 1)
 
 	if !c.worker.open {
@@ -548,7 +548,7 @@ func (c *CmdConn) sendToWorker(group *cmdGroup) {
 	c.worker.ch.Send(group)
 }
 
-func (c *CmdConn) workerLoop() {
+func (c *Conn) workerLoop() {
 	c.worker.wg.Add(1)
 	go func() {
 		defer c.worker.wg.Done()

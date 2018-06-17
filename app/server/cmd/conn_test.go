@@ -1,4 +1,4 @@
-package server_test
+package cmd_test
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ func TestFastlane(t *testing.T) {
 }
 
 //
-func TestCmdConn_MultipleWorkers(t *testing.T) {
+func TestCmdConnMultipleWorkers(t *testing.T) {
 	//defaultTimeout = time.Hour
 	dumpPackets = false
 
@@ -93,7 +93,7 @@ func TestCmdConn_MultipleWorkers(t *testing.T) {
 }
 
 //
-func TestCmdConn_MultipleWorkers2(t *testing.T) {
+func TestCmdConnMultipleWorkers2(t *testing.T) {
 	//defaultTimeout = time.Hour
 	dumpPackets = false
 
@@ -120,7 +120,7 @@ func TestCmdConn_MultipleWorkers2(t *testing.T) {
 }
 
 //
-func TestCmdConn_Multi(t *testing.T) {
+func TestCmdConnMulti(t *testing.T) {
 	conn := newMockConn()
 	defer conn.close()
 
@@ -139,7 +139,7 @@ func TestCmdConn_Multi(t *testing.T) {
 }
 
 //
-func TestCmdConn_MultiWorker(t *testing.T) {
+func TestCmdConnMultiWorker(t *testing.T) {
 	//dumpPackets = true
 
 	conn := newMockConn()
@@ -170,7 +170,7 @@ func TestCmdConn_MultiWorker(t *testing.T) {
 }
 
 //
-func TestCmdConn_MultiWorkerDiscard(t *testing.T) {
+func TestCmdConnMultiWorkerDiscard(t *testing.T) {
 	//dumpPackets = true
 
 	conn := newMockConn()

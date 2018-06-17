@@ -1,4 +1,4 @@
-package server
+package cmd
 
 import (
 	"fmt"
@@ -10,14 +10,14 @@ import (
 
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/app/api"
+	"github.com/genzai-io/sliced/common/celltree"
 	"github.com/genzai-io/sliced/common/evio"
+	"github.com/genzai-io/sliced/common/metrics"
 	"github.com/genzai-io/sliced/common/service"
 	"github.com/genzai-io/sliced/common/spinlock"
-	"github.com/pointc-io/sliced/index/celltree"
-	"github.com/rcrowley/go-metrics"
 )
 
-type CmdServer struct {
+type Server struct {
 	service.BaseService
 
 	evsrv evio.Server
@@ -42,8 +42,8 @@ type CmdServer struct {
 	statsWakes       metrics.Counter
 }
 
-func NewCmdServer() *CmdServer {
-	e := &CmdServer{
+func NewServer() *Server {
+	e := &Server{
 		statsConns:       metrics.NewCounter(),
 		statsOpened:      metrics.NewCounter(),
 		statsClosed:      metrics.NewCounter(),
@@ -58,13 +58,13 @@ func NewCmdServer() *CmdServer {
 	return e
 }
 
-func (e *CmdServer) OnStart() error {
+func (e *Server) OnStart() error {
 	e.wg.Add(1)
 	go e.serve()
 	return nil
 }
 
-func (e *CmdServer) OnStop() {
+func (e *Server) OnStop() {
 	e.action = evio.Shutdown
 	if e.evsrv.Shutdown != nil {
 		e.evsrv.Shutdown()
@@ -74,15 +74,15 @@ func (e *CmdServer) OnStop() {
 	}
 }
 
-func (e *CmdServer) Wait() {
+func (e *Server) Wait() {
 	e.wg.Wait()
 }
 
-func (e *CmdServer) Dial(addr string) error {
+func (e *Server) Dial(addr string) error {
 	return nil
 }
 
-func (e *CmdServer) loop(index int) *eventLoop {
+func (e *Server) loop(index int) *eventLoop {
 	if index < 0 {
 		return nil
 	} else if index >= len(e.loops) {
@@ -92,7 +92,7 @@ func (e *CmdServer) loop(index int) *eventLoop {
 	}
 }
 
-func (e *CmdServer) serve() {
+func (e *Server) serve() {
 	defer e.wg.Done()
 
 	var events evio.Events
@@ -119,9 +119,9 @@ func (e *CmdServer) serve() {
 	events.Opened = func(c evio.Conn) (out []byte, opts evio.Options, action evio.Action) {
 		nextID := atomic.AddUint64(&e.connectionCount, 1)
 
-		// Create new CmdConn
+		// Create new Conn
 		// This type of Conn can be upgraded to various other types
-		co := &CmdConn{
+		co := &Conn{
 			ID: nextID,
 			ev: c,
 			//Out: &emptyBuffer,
@@ -170,7 +170,7 @@ func (e *CmdServer) serve() {
 		// Notify connection.
 		ctx := co.Context()
 		if ctx != nil {
-			if conn, ok := ctx.(*CmdConn); ok {
+			if conn, ok := ctx.(*Conn); ok {
 				conn.OnClosed()
 				co.SetContext(nil)
 
@@ -200,7 +200,7 @@ func (e *CmdServer) serve() {
 			action = evio.Shutdown
 			return
 		}
-		c, ok := co.Context().(*CmdConn)
+		c, ok := co.Context().(*Conn)
 		if !ok {
 			action = evio.Close
 			return
@@ -227,7 +227,7 @@ const maxTickDuration = time.Second
 
 type eventLoop struct {
 	spinlock.Locker
-	svr         *CmdServer
+	svr         *Server
 	connections celltree.Tree
 
 	// Connections that have a live worker goroutine.
@@ -236,14 +236,14 @@ type eventLoop struct {
 	pivot uint64
 }
 
-func newEventLoop(svr *CmdServer) *eventLoop {
+func newEventLoop(svr *Server) *eventLoop {
 	loop := &eventLoop{
 		svr: svr,
 	}
 	return loop
 }
 
-func (l *eventLoop) remove(conn *CmdConn) {
+func (l *eventLoop) remove(conn *Conn) {
 	l.connections.Remove(conn.ID, unsafe.Pointer(conn))
 }
 
@@ -252,7 +252,7 @@ func (l *eventLoop) tick() (delay time.Duration, action evio.Action) {
 
 	var (
 		count = 0
-		conn  *CmdConn
+		conn  *Conn
 	)
 
 	l.connections.Range(l.pivot, func(cell uint64, key unsafe.Pointer, extra uint64) bool {
@@ -263,7 +263,7 @@ func (l *eventLoop) tick() (delay time.Duration, action evio.Action) {
 			return true
 		}
 
-		conn = (*CmdConn)(key)
+		conn = (*Conn)(key)
 		conn.tick()
 
 		return true

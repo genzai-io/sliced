@@ -16,6 +16,7 @@ import (
 	_ "github.com/rs/zerolog/log"
 
 	"github.com/genzai-io/sliced/app/server"
+	cmd_server "github.com/genzai-io/sliced/app/server/cmd"
 	"github.com/rs/zerolog"
 )
 
@@ -236,7 +237,7 @@ type Daemon struct {
 	service.BaseService
 
 	webServer *server.Web
-	server    *server.CmdServer
+	server    *cmd_server.Server
 }
 
 func (d *Daemon) OnStart() error {
@@ -273,7 +274,7 @@ func (d *Daemon) OnStart() error {
 	}
 
 	// Start Web.
-	d.server = server.NewCmdServer()
+	d.server = cmd_server.NewServer()
 	if err := d.server.Start(); err != nil {
 		core.Instance.Stop()
 		return err

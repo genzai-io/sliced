@@ -11,6 +11,15 @@ import (
 	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 )
 
+var (
+	ErrProtobufField    = errors.New("protobuf bad field key")
+	ErrProtobufWireType = errors.New("protobuf bad wiretype")
+	ErrProtobufVarint   = errors.New("protobuf bad varint value")
+	ErrProtobuf32bit    = errors.New("protobuf bad 32-bit value")
+	ErrProtobuf64bit    = errors.New("protobuf bad 64-bit value")
+	ErrProtobufLength   = errors.New("protobuf bad length-delimited value")
+)
+
 //
 type protobufDocument []byte
 
@@ -104,99 +113,7 @@ func (jp protobufMultiProjector) ProjectString(s string) table.Key {
 	return nil
 }
 
-type ProtobufReader struct {
-	b []byte
-	i int
-	n int
-
-	wire  int
-	field int
-	t     descriptor.FieldDescriptorProto_Type
-	v     uint64
-	sv    []byte
-
-	proto *MessageType
-}
-
-func NewProtobufReader(mt *MessageType, b []byte) *ProtobufReader {
-	r := &ProtobufReader{
-		b:     b,
-		proto: mt,
-	}
-	return r
-}
-
-var nilMessageType = &MessageType{}
-
-func (mt *MessageType) PBUFProject(b []byte, projector protobufProjector) (key table.Key) {
-	fieldNum := uint64(projector)
-	mt.PBUFKeyIterator(b, mt.FieldByNumber, func(entry *PBUFKey) bool {
-		if entry.FieldNum == fieldNum {
-			key = entry.Key
-			return false
-		}
-		return true
-	})
-	return
-}
-
-func (mt *MessageType) PBUFKeysOf(buf []byte, fields []*FieldType) (keys []table.Key, err error) {
-	keys = make([]table.Key, len(fields))
-
-	if len(fields) == 0 {
-		return
-	}
-
-	var (
-		index      = 0
-		field      = fields[0]
-		prevNumber = 0
-		outOfOrder = false
-	)
-
-	mt.PBUFKeyIterator(buf,
-		func(number int) *FieldType {
-			if number < prevNumber {
-				outOfOrder = true
-			}
-			if field.Number == int32(number) {
-				f := field
-				field = nil
-				return f
-			}
-			return nil
-		},
-		func(entry *PBUFKey) bool {
-			// Detect out of order
-			if outOfOrder {
-				return false
-			}
-
-			keys[index] = entry.Key
-			index++
-
-			if len(fields) == index {
-				return false
-			}
-
-			field = fields[index]
-			return true
-		},
-	)
-
-	if len(fields) == index {
-		return
-	}
-
-	// Pull one key at a time for the remaining keys
-	fields = fields[index:]
-	for ; index < len(fields); index++ {
-		keys[index] = mt.PBUFProject(buf, protobufProjector(index))
-	}
-
-	return
-}
-
+//
 type PBUFKey struct {
 	Wire     int
 	FieldNum uint64
@@ -204,6 +121,7 @@ type PBUFKey struct {
 	Key      table.Key
 }
 
+//
 func (mt *MessageType) PBUFKeyIterator(buf []byte, fieldFn func(number int) *FieldType, fn func(entry *PBUFKey) bool) error {
 	l := len(buf)
 	iNdEx := 0
@@ -323,7 +241,9 @@ func (mt *MessageType) PBUFKeyIterator(buf []byte, fieldFn func(number int) *Fie
 
 			if entry.Field.ProtobufType == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
 				//field.Descriptor.TypeName
-				fmt.Println("Message")
+				entry.Field.Message.PBUFKeyIterator(vb, entry.Field.Message.FieldByNumber, func(entry *PBUFKey) bool {
+					return true
+				})
 			}
 
 			entry.Key = table.StringKey(string(vb))
@@ -343,88 +263,395 @@ func (mt *MessageType) PBUFKeyIterator(buf []byte, fieldFn func(number int) *Fie
 	return nil
 }
 
-func decodeZigzag(v uint64) int64 {
-	return int64((v >> 1) ^ uint64((int64(v&1)<<63)>>63))
-}
-
-func (r *ProtobufReader) toKey() table.Key {
-	switch r.t {
-	// 0 is reserved for errors.
-	// Order is weird for historical reasons.
-	case descriptor.FieldDescriptorProto_TYPE_DOUBLE:
-		return table.FloatKey(*(*float64)(unsafe.Pointer(&r.v)))
-	case descriptor.FieldDescriptorProto_TYPE_FLOAT:
-		return table.FloatKey(*(*float64)(unsafe.Pointer(&r.v)))
-		// Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT64 if
-		// negative values are likely.
-	case descriptor.FieldDescriptorProto_TYPE_INT64:
-		x := int64(r.v >> 1)
-		if r.v&1 != 0 {
-			x = ^x
-		}
-		return table.FloatKey(*(*float64)(unsafe.Pointer(&r.v)))
-
-	case descriptor.FieldDescriptorProto_TYPE_UINT64:
-		return table.IntKey(r.v)
-
-		// Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT32 if
-		// negative values are likely.
-	case descriptor.FieldDescriptorProto_TYPE_INT32:
-		x := int64(r.v >> 1)
-		if r.v&1 != 0 {
-			x = ^x
-		}
-		return table.IntKey(*(*float64)(unsafe.Pointer(&r.v)))
-
-	case descriptor.FieldDescriptorProto_TYPE_FIXED64:
-		x := int64(r.v >> 1)
-		if r.v&1 != 0 {
-			x = ^x
-		}
-		return table.IntKey(*(*float64)(unsafe.Pointer(&r.v)))
-
-	case descriptor.FieldDescriptorProto_TYPE_FIXED32:
-		x := int64(r.v >> 1)
-		if r.v&1 != 0 {
-			x = ^x
-		}
-		return table.IntKey(*(*float64)(unsafe.Pointer(&r.v)))
-
-	case descriptor.FieldDescriptorProto_TYPE_BOOL:
-		if r.v != 0 {
-			return table.True
-		} else {
-			return table.False
-		}
-
-	case descriptor.FieldDescriptorProto_TYPE_STRING:
-		return table.StringKey(r.sv)
-
-		// Tag-delimited aggregate.
-		// Group type is deprecated and not supported in proto3. However, Proto3
-		// implementations should still be able to parse the group wire format and
-		// treat group fields as unknown fields.
-	case descriptor.FieldDescriptorProto_TYPE_GROUP:
-		return table.Nil
-
-	case descriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		return table.Nil
-
-		// New in version 2.
-	case descriptor.FieldDescriptorProto_TYPE_BYTES:
-		return table.StringKey(r.sv)
-
-	case descriptor.FieldDescriptorProto_TYPE_UINT32:
-		return table.IntKey(r.v)
-
-	case descriptor.FieldDescriptorProto_TYPE_ENUM:
-	case descriptor.FieldDescriptorProto_TYPE_SFIXED32:
-	case descriptor.FieldDescriptorProto_TYPE_SFIXED64:
-	case descriptor.FieldDescriptorProto_TYPE_SINT32:
-	case descriptor.FieldDescriptorProto_TYPE_SINT64:
+// Gets multiple fields from a protobuf serialized message.
+// It expects the protobuf message to be sorted in ascending field number order and
+// expects the specified fields to be ordered the same way. It will discover if either
+// are out of order and will degrade the algorithm to scan the document for each remaining
+// field it hasn't projected.
+func (mt *MessageType) PBUFGet(buf []byte, fields []*FieldType, keys []table.Key) ([]table.Key, error) {
+	keys = keys[:len(fields)]
+	if len(fields) == 0 {
+		return keys, nil
 	}
 
-	return table.Nil
+	var (
+		index      = 0
+		l          = len(buf)
+		fieldidx   = 0
+		field      = fields[0]
+		prevNumber = int32(0)
+	)
+
+	for index < l {
+		var key uint64
+
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return keys, ErrProtobufField
+			}
+			if index >= l {
+				return keys, io.ErrUnexpectedEOF
+			}
+			b := buf[index]
+			index++
+			key |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+
+		wire := int(key & 7)
+		fieldNum := int32(key >> 3)
+
+		if fieldNum <= 0 {
+			return keys, fmt.Errorf("protobuf illegal tag %d (wire type %d)", fieldNum, key)
+		}
+
+		// Is it out of order?
+		// Do a get on each field. This is much slower, but it guarantees to not miss any fields.
+		if prevNumber > fieldNum {
+			var err error
+			for i, f := range fields {
+				if keys[i], err = f.PBUFGet(buf); err != nil {
+					return keys, err
+				}
+			}
+			return keys, nil
+		}
+
+		prevNumber = fieldNum
+
+	Match:
+		if fieldNum != field.Number {
+			// Is it missing from the message?
+			if fieldNum > field.Number {
+				keys[fieldidx] = table.SkipKey
+				fieldidx++
+				if fieldidx == len(fields) {
+					return keys, nil
+				}
+				field = fields[fieldidx]
+				prevNumber = fieldNum
+				goto Match
+			}
+
+			// Skip over the value
+			switch wire {
+			case 0: // varint
+				key = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return keys, ErrProtobufVarint
+					}
+					if index >= l {
+						return keys, io.ErrUnexpectedEOF
+					}
+					b := buf[index]
+					index++
+					key |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+
+			case 5: // 32-bit
+				index += 4
+				if index >= l {
+					return keys, ErrProtobuf32bit
+				}
+
+			case 1: // 64-bit
+				index += 8
+				if index >= l {
+					return keys, ErrProtobuf64bit
+				}
+
+			case 2: // length-delimited
+				key = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return keys, ErrProtobufLength
+					}
+					if index >= l {
+						return keys, io.ErrUnexpectedEOF
+					}
+					b := buf[index]
+					index++
+					key |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						index += int(key)
+						if index >= l {
+							return keys, io.ErrUnexpectedEOF
+						}
+						break
+					}
+				}
+
+			default:
+				return keys, ErrProtobufWireType
+			}
+			continue
+		}
+
+		// Break out the value from the buffer based on the wire type
+		switch wire {
+		case 0: // varint
+			key = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return keys, ErrProtobufVarint
+				}
+				if index >= l {
+					return keys, io.ErrUnexpectedEOF
+				}
+				b := buf[index]
+				index++
+				key |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+
+			keys[fieldidx] = protobufVarint(field.ProtobufType, key)
+
+		case 5: // 32-bit
+			index += 4
+			if index >= l {
+				return keys, io.ErrUnexpectedEOF
+			}
+			keys[fieldidx] = table.IntKey(uint64(buf[index]) |
+				uint64(buf[index+1])<<8 |
+				uint64(buf[index+2])<<16 |
+				uint64(buf[index+3])<<24)
+
+		case 1: // 64-bit
+			index += 8
+			if index >= l {
+				return keys, io.ErrUnexpectedEOF
+			}
+			keys[fieldidx] = table.IntKey(uint64(buf[index]) |
+				uint64(buf[index+1])<<8 |
+				uint64(buf[index+2])<<16 |
+				uint64(buf[index+3])<<24 |
+				uint64(buf[index+4])<<32 |
+				uint64(buf[index+5])<<40 |
+				uint64(buf[index+6])<<48 |
+				uint64(buf[index+7])<<56)
+
+		case 2: // length-delimited
+			key = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return keys, ErrProtobufLength
+				}
+				if index >= l {
+					return keys, io.ErrUnexpectedEOF
+				}
+				b := buf[index]
+				index++
+				key |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					end := int(key) + index
+					if end >= l {
+						return keys, io.ErrUnexpectedEOF
+					}
+					keys[fieldidx] = table.StringKey(buf[index:end])
+					index = end
+					break
+				}
+			}
+
+		default:
+			return keys, ErrProtobufWireType
+		}
+
+		fieldidx++
+		if fieldidx == len(fields) {
+			return keys, nil
+		}
+		field = fields[fieldidx]
+		// Are the fields not sorted by Number?
+		if field.Number < fieldNum {
+			var err error
+			// Get the remaining one by one
+			for ; fieldidx < len(fields); fieldidx++ {
+				if keys[fieldidx], err = fields[fieldidx].PBUFGet(buf); err != nil {
+					return keys, err
+				}
+			}
+			return keys, nil
+		}
+	}
+
+	return keys, nil
+}
+
+//
+func (mt *FieldType) PBUFGet(buf []byte) (table.Key, error) {
+	index := 0
+	l := len(buf)
+
+	for index < l {
+		var key uint64
+
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return table.SkipKey, ErrProtobufField
+			}
+			if index >= l {
+				return table.SkipKey, io.ErrUnexpectedEOF
+			}
+			b := buf[index]
+			index++
+			key |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+
+		wire := int(key & 7)
+		fieldNum := int32(key >> 3)
+
+		if fieldNum <= 0 {
+			return table.SkipKey, fmt.Errorf("proto: illegal tag %d (wire type %d)", fieldNum, key)
+		}
+
+		// Skip over the value if field number not found.
+		if mt.Number != fieldNum {
+			// Break out the value from the buffer based on the wire type
+			switch wire {
+			case 0: // varint
+				key = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return table.SkipKey, ErrProtobufVarint
+					}
+					if index >= l {
+						return table.SkipKey, io.ErrUnexpectedEOF
+					}
+					b := buf[index]
+					index++
+					key |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+
+			case 5: // 32-bit
+				index += 4
+				if index >= l {
+					return table.SkipKey, ErrProtobuf32bit
+				}
+
+			case 1: // 64-bit
+				index += 8
+				if index >= l {
+					return table.SkipKey, ErrProtobuf64bit
+				}
+
+			case 2: // length-delimited
+				key = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return table.SkipKey, ErrProtobufLength
+					}
+					if index >= l {
+						return table.SkipKey, io.ErrUnexpectedEOF
+					}
+					b := buf[index]
+					index++
+					key |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						index += int(key)
+						if index >= l {
+							return table.SkipKey, io.ErrUnexpectedEOF
+						}
+						break
+					}
+				}
+
+			default:
+				return table.SkipKey, ErrProtobufWireType
+			}
+			continue
+		}
+
+		// Break out the value from the buffer based on the wire type
+		switch wire {
+		case 0: // varint
+			key = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return table.SkipKey, ErrProtobufField
+				}
+				if index >= l {
+					return table.SkipKey, io.ErrUnexpectedEOF
+				}
+				b := buf[index]
+				index++
+				key |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+
+			return protobufVarint(mt.ProtobufType, key), nil
+
+		case 5: // 32-bit
+			index += 4
+			if index >= l {
+				return table.SkipKey, io.ErrUnexpectedEOF
+			}
+			return table.IntKey(uint64(buf[index]) |
+				uint64(buf[index+1])<<8 |
+				uint64(buf[index+2])<<16 |
+				uint64(buf[index+3])<<24), nil
+
+		case 1: // 64-bit
+			index += 8
+			if index >= l {
+				return table.SkipKey, io.ErrUnexpectedEOF
+			}
+			return table.IntKey(uint64(buf[index]) |
+				uint64(buf[index+1])<<8 |
+				uint64(buf[index+2])<<16 |
+				uint64(buf[index+3])<<24 |
+				uint64(buf[index+4])<<32 |
+				uint64(buf[index+5])<<40 |
+				uint64(buf[index+6])<<48 |
+				uint64(buf[index+7])<<56), nil
+
+		case 2: // length-delimited
+			key = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return table.SkipKey, ErrProtobufLength
+				}
+				if index >= l {
+					return table.SkipKey, io.ErrUnexpectedEOF
+				}
+				b := buf[index]
+				index++
+				key |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					end := int(key) + index
+					if end >= l {
+						return table.SkipKey, io.ErrUnexpectedEOF
+					}
+					return table.StringKey(buf[index:end]), nil
+				}
+			}
+
+		default:
+			return table.SkipKey, ErrProtobufWireType
+		}
+	}
+
+	return table.SkipKey, nil
+}
+
+func decodeZigzag(v uint64) int64 {
+	return int64((v >> 1) ^ uint64((int64(v&1)<<63)>>63))
 }
 
 func protobufVarint(t descriptor.FieldDescriptorProto_Type, raw uint64) table.Key {

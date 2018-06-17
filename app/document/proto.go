@@ -8,6 +8,8 @@ import (
 	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 )
 
+var nilMessageType = &MessageType{}
+
 // Represents a single type of document or "prototype".
 // If a protobuf descriptor is assigned, then protobuf messages
 // are supported. Otherwise, a self-describing format is the only format
@@ -97,6 +99,7 @@ func NewProto(parent *MessageType, file *ProtoFile, d *descriptor.DescriptorProt
 		p.FieldTable = make([]*FieldType, max+1)
 		for _, f := range p.Fields {
 			p.FieldTable[f.Number] = f
+			p.FieldsByName[f.Name] = f
 		}
 	}
 

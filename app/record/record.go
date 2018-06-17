@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/genzai-io/sliced/app/table"
 	"github.com/genzai-io/sliced/proto/store"
 )
 
@@ -122,4 +123,11 @@ func (c *Entry) Read(buf []byte) (int, error) {
 
 func (c *Entry) Remaining() int {
 	return c.remaining
+}
+
+//
+type Value struct {
+	Key         table.Key
+	Value       []byte
+	Projections []table.Key
 }

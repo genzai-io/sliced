@@ -1,10 +1,10 @@
-// Testing CmdConn requires simulating the event-loop. That's what the structures
+// Testing Conn requires simulating the event-loop. That's what the structures
 // in this file do. It mocks an evio.Conn and the evio event-loop. Then, many high
 // level helpers, a network packet abstraction and a RESP protocol reply parser to
 // parse the network packets as a series of RESP replies.
 //
 //
-package server_test
+package cmd_test
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/genzai-io/sliced/app/api"
-	"github.com/genzai-io/sliced/app/server"
+	cmd_server "github.com/genzai-io/sliced/app/server/cmd"
 	"github.com/genzai-io/sliced/common/evio"
 )
 
@@ -59,7 +59,7 @@ func newMockConn() *mockEvConn {
 		replyCh:     make(chan api.CommandReply, 1000),
 		wakeCh:      make(chan *packet, 1000),
 	}
-	conn := server.NewConn(ev)
+	conn := cmd_server.NewConn(ev)
 	ev.conn = conn
 
 	ev.start()
@@ -71,7 +71,7 @@ type packet struct {
 	sequence int
 	conn     *mockEvConn
 
-	// CmdConn data
+	// Conn data
 	in     []byte
 	out    []byte
 	action evio.Action
@@ -222,7 +222,7 @@ type mockEvConn struct {
 	cancel context.CancelFunc
 	sync.Mutex
 	wg     sync.WaitGroup
-	conn   *server.CmdConn
+	conn   *cmd_server.Conn
 
 	closed bool
 	seq    int

@@ -45,7 +45,7 @@ var (
 // IntDesc -> intDescItem
 // Float -> floatItem
 // FloatDesc -> floatDescItem
-// Timestamp -> timeItem
+// Time -> timeItem
 // TimeDesc -> timeDescItem
 // String -> stringItem
 // StringDesc -> stringDescItem
@@ -501,7 +501,7 @@ func (k TimeKey) Keys() int      { return 1 }
 //	return SkipKey
 //}
 func (k TimeKey) Type() moved.DataType {
-	return moved.Timestamp
+	return moved.Time
 }
 func (k TimeKey) Match(pattern string) bool {
 	return pattern == "*"
@@ -541,7 +541,7 @@ func (k TimeDescKey) Keys() int      { return 1 }
 //	return SkipKey
 //}
 func (k TimeDescKey) Type() moved.DataType {
-	return moved.Timestamp
+	return moved.Time
 }
 func (k TimeDescKey) Match(pattern string) bool {
 	return pattern == "*"

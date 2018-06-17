@@ -18,10 +18,7 @@ import (
 var Service *ProtoService
 
 func init() {
-	Service = &ProtoService{
-		files: make(map[string]*ProtoFile),
-	}
-	Service.BaseService = *service.NewBaseService(moved.Logger, "", Service)
+	Service = NewProtoService()
 }
 
 type ProtoService struct {
@@ -30,6 +27,14 @@ type ProtoService struct {
 	sync.RWMutex
 
 	files map[string]*ProtoFile
+}
+
+func NewProtoService() *ProtoService {
+	s := &ProtoService{
+		files: make(map[string]*ProtoFile),
+	}
+	s.BaseService = *service.NewBaseService(moved.Logger, "proto", Service)
+	return s
 }
 
 func (p *ProtoService) OnStart() error {
