@@ -51,6 +51,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/genzai-io/sliced/common/spinlock"
 )
 
 // Item represents a single object in the tree.
@@ -81,6 +83,7 @@ var (
 // Two Btrees using the same freelist are safe for concurrent write access.
 type FreeList struct {
 	//mu       sync.Mutex
+	spinlock.Locker
 	freelist []*node
 }
 
@@ -94,16 +97,16 @@ func NewFreeList(size int) *FreeList {
 
 func (f *FreeList) newNode() (n *node) {
 	//n = f.pool.Get().(*node)
-	//f.mu.Lock()
+	f.Lock()
 	index := len(f.freelist) - 1
 	if index < 0 {
-		//f.mu.Unlock()
+		f.Unlock()
 		return new(node)
 	}
 	n = f.freelist[index]
 	f.freelist[index] = nil
 	f.freelist = f.freelist[:index]
-	//f.mu.Unlock()
+	f.Unlock()
 	return
 }
 

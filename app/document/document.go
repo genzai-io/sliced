@@ -3,18 +3,7 @@ package document
 import (
 	"strconv"
 
-	"github.com/genzai-io/sliced/app/table"
 	"github.com/genzai-io/sliced/proto/store"
-)
-
-type Type int
-
-const (
-	JSON     Type = iota // Body is in JSON format
-	Protobuf             // Body is in Protocol buffers binary format
-	Hash                 // Body is a Go map
-	Struct               // Body is a Go struct
-	Blob                 // Body is just a []byte
 )
 
 type GlobalID struct {
@@ -28,13 +17,6 @@ type ID struct {
 	Epoch uint64
 	Slot  uint16
 	Seq   uint32
-}
-
-type SecondaryValue struct {
-	ID      ID
-	LogID   uint64
-	Key     table.Key
-	Pointer table.Key
 }
 
 func (id ID) String() string {
@@ -57,22 +39,5 @@ type Record struct {
 }
 
 type Document interface {
-	Type() Type
 
-	Bytes() []byte
-
-	String() string
-}
-
-//
-type VisitorContext struct {
-	Number int
-	Name   string
-}
-
-//
-type FieldVisitor interface {
-	Begin()
-
-	End()
 }

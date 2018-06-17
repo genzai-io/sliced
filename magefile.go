@@ -133,9 +133,11 @@ func Proto() error {
 		"./proto/store.proto",
 		"--gofast_out=plugins=grpc:$GOPATH/src",
 		//"--gogo_out=:$GOPATH/src",
+		"--java_out=./java",
 		"--plugin=protoc-gen-ts=./ui/node_modules/.bin/protoc-gen-ts",
 		"--ts_out=service=true:./ui/src",
 		"--js_out=import_style=commonjs,binary:./ui/src",
+
 	)
 }
 

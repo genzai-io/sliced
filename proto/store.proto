@@ -1,240 +1,16 @@
 syntax = "proto3";
 
+package store;
+
 option go_package = "github.com/genzai-io/sliced/proto/store";
-package store_pb;
 
-option java_package = "io.genzai.sliced";
-option java_outer_classname = "StoreProtos";
+option java_package = "io.genzai.sliced.model.store";
+//option java_outer_classname = "Store";
+option java_multiple_files = true;
 
-enum Level {
-    MISSION = 0;
-    BUSINESS = 1;
-    BACKGROUND = 2;
-}
 
-enum Codec {
-    JSON = 0;
-    PROTOBUF = 1;
-    MSGPACK = 2;
-    CBOR = 3;
-}
+message MessageType {
 
-//enum MembershipType {
-//    VOTER = 0;
-//    NON_VOTER = 1;
-//}
-
-enum Suffrage {
-    VOTER = 0;
-    NON_VOTER = 1;
-    STAGING = 2;
-}
-
-// Worker Application
-message App {
-    uint64 id = 1;
-    string name = 2;
-    string desc = 3;
-
-    repeated string versions = 9;
-    repeated string tags = 10;
-}
-
-// A Processor node is a client app that connects to the cluster
-// and can accept work to "process".
-message Worker {
-    string id = 1;
-    string version = 2;
-    string address = 3;
-
-    int64 memory = 5;
-    int32 cpus = 6;
-
-    // List of queues it's able to process
-    repeated string queues = 10;
-}
-
-enum RaftStatus {
-    FOLLOWER = 0;
-    CANDIDATE = 1;
-    LEADER = 2;
-    SHUTDOWN = 3;
-}
-
-// slice/d Node
-message Node {
-    string id = 1;
-    string host = 2;
-    string version = 3;
-    // VM / Server ID
-    string instanceID = 4;
-    // Datacenter region
-    string region = 7;
-    // Availability zone
-    string zone = 8;
-    uint32 cores = 9;
-    uint64 memory = 10;
-    string os = 50;
-    string arch = 51;
-    uint64 cpuSpeed = 52;
-
-    // Config
-    bool bootstrap = 11;
-    string webHost = 12;
-    string apiHost = 13;
-    uint32 apiLoops = 14;
-
-    // Raft
-    RaftMember member = 16;
-
-    fixed64 created = 18;
-    fixed64 inited = 19;
-    fixed64 changed = 20;
-    fixed64 dropped = 21;
-    fixed64 removed = 22;
-
-    // Attached drives / volumes
-    repeated Drive drives = 24;
-}
-
-message RaftMember {
-    string id = 1;
-    string address = 2;
-    RaftStatus status = 3;
-    // Eventual suffrage status VOTER or NON_VOTER
-    Suffrage membership = 4;
-    // Current Suffrage Status
-    Suffrage suffrage = 5;
-
-    // Current term
-    uint64 term = 10;
-    // Applied index
-    uint64 applied = 11;
-}
-
-// A grouping of nodes that can form Slice Groups.
-// Essentially this acts as a Raft Group template.
-message NodeGroup {
-    int64 id = 1;
-    string name = 2;
-    repeated Member members = 3;
-
-    Slice slices = 10;
-
-    message Member {
-        string nodeID = 1;
-        Suffrage suffrage = 2;
-    }
-}
-
-message Database {
-    int32 id = 1;
-    string name = 2;
-    string description = 3;
-    fixed64 created = 4;
-    fixed64 changed = 5;
-    fixed64 dropped = 6;
-    fixed64 removed = 7;
-
-    // Slices
-    repeated Slice slices = 10;
-}
-
-message SliceID {
-    // Database ID
-    int32 databaseID = 1;
-    // Slice number
-    int32 sliceID = 2;
-}
-
-// Each Slice has it's own Raft group and represents some
-// range of the total slots of a database.
-message Slice {
-    SliceID id = 1;
-    // Ring
-    repeated SlotRange slots = 2;
-    // Membership
-    repeated SliceNode nodes = 3;
-}
-
-message SliceNode {
-    string nodeID = 1;
-    SliceID sliceID = 2;
-    RaftMember member = 3;
-
-}
-
-// A slice is a partition or shard represented by mapping a
-// range of Slots from the hash-ring. There are 16384 slots
-// in the hash-ring and a slice is mapped to at least one slot.
-//message Slice {
-//    int32 id = 1;
-//    Bucket bucket = 2;
-//    // A slice may have multiple ranges
-//    repeated SlotRange ranges = 3;
-//    repeated string nodeIds = 4;
-//}
-
-message Rebalance {
-    int64 timestamp = 1;
-    repeated Task tasks = 2;
-
-    message Task {
-        int32 from = 1;
-        int32 to = 2;
-        int32 low = 3;
-        int32 count = 4;
-    }
-}
-
-message Ring {
-    repeated SlotRange ranges = 2;
-}
-
-message SlotRange {
-    int32 slice = 1;
-    // The low slot
-    int32 low = 2;
-    // The high slot
-    int32 high = 3;
-}
-
-// Locally mounted volume
-message Drive {
-    string mount = 1;
-    Kind kind = 2;
-    DriveStats stats = 3;
-    bool working = 4;
-    string fileSystem = 5;
-
-    enum Kind {
-        HDD = 0;
-        SSD = 1;
-        NVME = 2;
-    }
-}
-
-message DriveStats {
-    uint64 size = 1;
-    uint64 used = 2;
-    uint64 avail = 3;
-}
-
-message CloudBucket {
-    string id = 1;
-    string accessKey = 2;
-    string secretKey = 3;
-    string url = 4;
-    API api = 5;
-
-    enum API {
-        S3 = 0;
-    }
-}
-
-message Bucket {
-    int64 id = 1;
-    string name = 2;
 }
 
 message RecordID {
@@ -248,16 +24,25 @@ message Record {
 }
 
 message Projection {
-    Codec codec = 1;
-    repeated string names = 2;
+    repeated Field fields = 1;
 
     message Field {
         int32 id = 1;
         string name = 2;
+        bool desc = 3;
+        int32 type = 4;
     }
 }
 
 message Index {
+    int64 id = 1;
+    string name = 2;
+    int64 topicID = 3;
+    Type type = 4;
+    uint64 created = 5;
+
+    Projection projection = 10;
+
     enum Type {
         BTREE = 0;
         PREFIX = 2;
@@ -274,13 +59,12 @@ message Topic {
     string name = 2;
     // Slot to default to if sliceKey isn't set
     uint32 slot = 3;
-    Type type = 4;
+    string type = 12;
     sint64 queueID = 5;
     string rollerID = 6;
     Mode mode = 7;
 
     int32 writeSpeed = 8;
-    Codec codec = 9;
 
     // A "Keyed" topic (Primary Key) turns a topic into a table
     Projection key = 10;
@@ -290,11 +74,7 @@ message Topic {
     Projection sliceKey = 11;
 
     // Recommended Drive type
-    Drive.Kind drive = 12;
-
-    enum Type {
-        STANDARD = 0;
-    }
+    //    Drive.Kind drive = 12;
 
     enum Mode {
         // Topic is used as a "Log"
@@ -303,8 +83,6 @@ message Topic {
         QUEUE = 1;
         // Tables allow for updates based on a specified "key"
         TABLE = 2;
-        // Cache mode does not persist to disk
-        CACHE = 3;
     }
 }
 
@@ -393,6 +171,10 @@ message SegmentHeader {
     int64 startIndex = 4;
 }
 
+message RecordDelete {
+    RecordPointer location = 1;
+}
+
 message GlobalID {
     int64 id = 1;
     int32 slot = 2;
@@ -401,14 +183,9 @@ message GlobalID {
 
 message RecordPointer {
     RecordID id = 1;
-    // Log ID
-    uint64 logID = 2;
-    // Slot
-    uint32 slot = 3;
-    // Size of the body
-    uint32 size = 4;
     // Position of first byte of the body
-    int64 pos = 5;
+    int64 pos = 2;
+    int32 size = 3;
 }
 
 // Queue or Message Queue is a higher level construct that manage the
@@ -434,72 +211,25 @@ message Queue {
     repeated string tags = 16;
 }
 
+message Job {
+    RecordID id = 1;
+    uint64 deadline = 4;
+    bytes message = 5;
+}
+
+message Ack {
+    string id = 1;
+    Code code = 2;
+
+    enum Code {
+        SUCCESS = 0;
+        TIMED_OUT = 1;
+        FATAL = 2;
+    }
+}
+
 message Daemon {
     uint64 id = 1;
     string name = 2;
     Level level = 3;
-}
-
-
-message InitNode {
-    Node node = 1;
-}
-
-message AddNodeToGroup {
-    string nodeID = 1;
-    int64 groupID = 2;
-    Suffrage suffrage = 3;
-    bool bootstrap = 4;
-}
-
-message CreateDatabaseRequest {
-    string name = 1;
-}
-
-message CreateDatabaseReply {
-
-}
-
-message TxCreateTopic {
-    string name = 1;
-    Level level = 2;
-    string roller = 3;
-    string appID = 4;
-}
-
-message TxCreateQueue {
-    string name = 1;
-    Level level = 2;
-    string roller = 3;
-    bool fifo = 5;
-    uint64 maxInflight = 6;
-    uint64 maxVisibility = 7;
-    uint64 maxDelay = 8;
-    uint32 maxRetries = 9;
-    string appID = 10;
-}
-
-message TxCreateSegment {
-
-}
-
-message TxRoll {
-    int64 rollerID = 1;
-}
-
-message TxDeleteTopic {
-
-}
-
-message TxChangeRing {
-    repeated Slice from = 1;
-    repeated Slice to = 2;
-}
-
-message TxChangeRingCancel {
-}
-
-// Splits a topic based on a new ring signature
-message TxSplitTopic {
-
 }

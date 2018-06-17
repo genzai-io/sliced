@@ -21,99 +21,6 @@ var (
 )
 
 //
-type protobufDocument []byte
-
-func (jd protobufDocument) Type() Type {
-	return Protobuf
-}
-
-func (jd protobufDocument) Bytes() []byte {
-	return jd
-}
-
-func (jd protobufDocument) String() string {
-	return *(*string)(unsafe.Pointer(&jd))
-}
-
-func (jd protobufDocument) ToType(t Type) Document {
-	if t == Protobuf {
-		return jd
-	}
-	switch t {
-	case JSON:
-
-	}
-
-	return nil
-}
-
-//func (pd protobufDocument)
-
-func ProtobufProjector(projector ProtoProjection) Projector {
-	switch projector.Fields() {
-	case 0:
-		return NilProjector
-
-	case 1:
-		return protobufProjector(projector.FieldAt(0).Number)
-
-	default:
-		names := make([]int32, projector.Fields())
-		for i := 0; i < projector.Fields(); i++ {
-			names[i] = projector.FieldAt(i).Number
-		}
-		return protobufMultiProjector(names)
-	}
-	return NilProjector
-}
-
-type protobufStringProjector int32
-
-func (jp protobufStringProjector) Project(b []byte) table.Key {
-	//return table.JSONToKey(gprotobuf.GetBytes(b, (string)(jp)))
-	return nil
-}
-
-func (jp protobufStringProjector) ProjectString(s string) table.Key {
-	//return table.JSONToKey(gprotobuf.Get(s, (string)(jp)))
-	return nil
-}
-
-// Projects a single JSON path expression.
-type protobufProjector int
-
-func (jp protobufProjector) Project(b []byte) table.Key {
-	//return table.JSONToKey(gprotobuf.GetBytes(b, (string)(jp)))
-	return nil
-}
-
-func (jp protobufProjector) ProjectString(s string) table.Key {
-	//return table.JSONToKey(gprotobuf.Get(s, (string)(jp)))
-	return nil
-}
-
-// Projects an array of JSON path expression creating Composite Keys.
-type protobufMultiProjector []int32
-
-func (jp protobufMultiProjector) Project(b []byte) table.Key {
-	//v := make([]table.Key, len(jp))
-	for _, p := range jp {
-		_ = p
-		//v[i] = table.JSONToKey(gprotobuf.GetBytes(b, p))
-	}
-	return nil
-}
-
-func (jp protobufMultiProjector) ProjectString(s string) table.Key {
-	//v := make([]table.Key, len(jp))
-	for _, p := range jp {
-		_ = p
-		//v[i] = table.JSONToKey(gprotobuf.Get(s, p))
-	}
-	return nil
-}
-
-//
 type PBUFKey struct {
 	Wire     int
 	FieldNum uint64
@@ -201,7 +108,7 @@ func (mt *MessageType) PBUFKeyIterator(buf []byte, fieldFn func(number int) *Fie
 			}
 			buf = buf[n:]
 
-			entry.Key = protobufVarint(entry.Field.ProtobufType, v)
+			entry.Key = pbufVarintToKey(entry.Field.ProtobufType, v)
 
 		case 5: // 32-bit
 			if len(buf) < 4 {
@@ -412,7 +319,7 @@ func (mt *MessageType) PBUFGet(buf []byte, fields []*FieldType, keys []table.Key
 				}
 			}
 
-			keys[fieldidx] = protobufVarint(field.ProtobufType, key)
+			keys[fieldidx] = pbufVarintToKey(field.ProtobufType, key)
 
 		case 5: // 32-bit
 			index += 4
@@ -486,7 +393,7 @@ func (mt *MessageType) PBUFGet(buf []byte, fields []*FieldType, keys []table.Key
 	return keys, nil
 }
 
-//
+// Gets a single value
 func (mt *FieldType) PBUFGet(buf []byte) (table.Key, error) {
 	index := 0
 	l := len(buf)
@@ -595,7 +502,7 @@ func (mt *FieldType) PBUFGet(buf []byte) (table.Key, error) {
 				}
 			}
 
-			return protobufVarint(mt.ProtobufType, key), nil
+			return pbufVarintToKey(mt.ProtobufType, key), nil
 
 		case 5: // 32-bit
 			index += 4
@@ -650,11 +557,12 @@ func (mt *FieldType) PBUFGet(buf []byte) (table.Key, error) {
 	return table.SkipKey, nil
 }
 
+//
 func decodeZigzag(v uint64) int64 {
 	return int64((v >> 1) ^ uint64((int64(v&1)<<63)>>63))
 }
 
-func protobufVarint(t descriptor.FieldDescriptorProto_Type, raw uint64) table.Key {
+func pbufVarintToKey(t descriptor.FieldDescriptorProto_Type, raw uint64) table.Key {
 	switch t {
 	// 0 is reserved for errors.
 	// Order is weird for historical reasons.

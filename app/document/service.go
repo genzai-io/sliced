@@ -11,6 +11,7 @@ import (
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/common/base58"
 	"github.com/genzai-io/sliced/common/service"
+	"github.com/genzai-io/sliced/common/spmap"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 )
@@ -27,12 +28,16 @@ type ProtoService struct {
 	sync.RWMutex
 
 	files map[string]*ProtoFile
+
+	files2 *spmap.Map
 }
 
 func NewProtoService() *ProtoService {
 	s := &ProtoService{
-		files: make(map[string]*ProtoFile),
+		files:  make(map[string]*ProtoFile),
+		files2: spmap.New(&spmap.Options{}),
 	}
+
 	s.BaseService = *service.NewBaseService(moved.Logger, "proto", Service)
 	return s
 }
@@ -155,35 +160,4 @@ func (p *ProtoService) GetFile(hashOrPath string) (*ProtoFile, bool) {
 
 	f, ok := p.files[hashOrPath]
 	return f, ok
-}
-
-//
-type ProtoFile struct {
-	Name string
-
-	Hash       string
-	GzipHash   string
-	Descriptor *descriptor.FileDescriptorProto
-	Messages   map[string]*MessageType
-	Enums      map[string]*EnumType
-}
-
-func NewProtoFile(hash, gzipHash string, descriptor *descriptor.FileDescriptorProto) *ProtoFile {
-	file := &ProtoFile{
-		Name:       *descriptor.Name,
-		Hash:       hash,
-		GzipHash:   gzipHash,
-		Descriptor: descriptor,
-		Messages:   make(map[string]*MessageType),
-		Enums:      make(map[string]*EnumType),
-	}
-
-	newProtoMap(nil, file, descriptor.MessageType, file.Messages)
-	newEnumMap(nil, file, descriptor.EnumType, file.Enums)
-
-	for _, m := range file.Messages {
-		m.resolve()
-	}
-
-	return file
 }

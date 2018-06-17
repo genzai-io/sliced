@@ -97,8 +97,8 @@ func Test_ProtoService(t *testing.T) {
 	//})
 
 
-	document := ToDocument(data)
-	fmt.Println(document.Type())
+	//document := ToDocument(data)
+	//fmt.Println(document.Type())
 }
 
 func TestPBUFGetMultiple_OutOfOrder(t *testing.T) {

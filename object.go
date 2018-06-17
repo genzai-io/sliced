@@ -15,12 +15,13 @@ const (
 	String DataType = 1 // Keyable
 
 	Int    DataType = 2 // Keyable
-	Int32  DataType = 3
-	Uint32 DataType = 4
-	Int16  DataType = 5
-	Uint16 DataType = 6
-	Int8   DataType = 7
-	Uint8  DataType = 8
+	Uint   DataType = 3 // Keyable
+	Int32  DataType = 4
+	Uint32 DataType = 5
+	Int16  DataType = 6
+	Uint16 DataType = 7
+	Int8   DataType = 8
+	Uint8  DataType = 9
 
 	Float   DataType = 10 // Keyable
 	Float32 DataType = 11 // Keyable
@@ -31,8 +32,7 @@ const (
 	Bytes DataType = 15
 	List  DataType = 18
 	Map   DataType = 19
-
-	Struct DataType = 9
+	Set   DataType = 20
 
 	// Message Formats
 	Protobuf DataType = 20
@@ -41,9 +41,12 @@ const (
 	CBOR     DataType = 23
 	XML      DataType = 24
 
-	Any DataType = 0
+	HyperLogLog DataType = 30
+
+	Any DataType = 255
 
 	Composite DataType = 99
+	Unknown   DataType = 100
 
 	// Data Structures
 )

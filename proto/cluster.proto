@@ -1,0 +1,241 @@
+syntax = "proto3";
+
+import "proto/store.proto";
+
+package api;
+
+option go_package = "github.com/genzai-io/sliced/proto/cluster";
+
+option java_package = "io.genzai.sliced.model.cluster";
+//option java_outer_classname = "Store";
+option java_multiple_files = true;
+
+
+enum Level {
+    MISSION = 0;
+    BUSINESS = 1;
+    BACKGROUND = 2;
+}
+
+enum Codec {
+    PROTOBUF = 0;
+    JSON = 1;
+}
+
+//enum MembershipType {
+//    VOTER = 0;
+//    NON_VOTER = 1;
+//}
+
+enum Suffrage {
+    VOTER = 0;
+    NON_VOTER = 1;
+    STAGING = 2;
+}
+
+// Worker Application
+message App {
+    uint64 id = 1;
+    string name = 2;
+    string desc = 3;
+
+    repeated string versions = 9;
+    repeated string tags = 10;
+}
+
+// A Processor node is a client app that connects to the cluster
+// and can accept work to "process".
+message Worker {
+    string id = 1;
+    string version = 2;
+    string address = 3;
+
+    int64 memory = 5;
+    int32 cpus = 6;
+
+    // List of queues it's able to process
+    repeated string queues = 10;
+}
+
+enum RaftStatus {
+    FOLLOWER = 0;
+    CANDIDATE = 1;
+    LEADER = 2;
+    SHUTDOWN = 3;
+}
+
+// slice/d Node
+message Node {
+    string id = 1;
+    string host = 2;
+    string version = 3;
+    // VM / Server ID
+    string instanceID = 4;
+    // Datacenter region
+    string region = 7;
+    // Availability zone
+    string zone = 8;
+    uint32 cores = 9;
+    uint64 memory = 10;
+    string os = 50;
+    string arch = 51;
+    uint64 cpuSpeed = 52;
+
+    // Config
+    bool bootstrap = 11;
+    string webHost = 12;
+    string apiHost = 13;
+    uint32 apiLoops = 14;
+
+    // Raft
+    RaftMember member = 16;
+
+    fixed64 created = 18;
+    fixed64 inited = 19;
+    fixed64 changed = 20;
+    fixed64 dropped = 21;
+    fixed64 removed = 22;
+
+    // Attached drives / volumes
+    repeated Drive drives = 24;
+}
+
+message RaftMember {
+    string id = 1;
+    string address = 2;
+    RaftStatus status = 3;
+    // Eventual suffrage status VOTER or NON_VOTER
+    Suffrage membership = 4;
+    // Current Suffrage Status
+    Suffrage suffrage = 5;
+
+    // Current term
+    uint64 term = 10;
+    // Applied index
+    uint64 applied = 11;
+}
+
+// A grouping of nodes that can form Slice Groups.
+// Essentially this acts as a Raft Group template.
+message NodeGroup {
+    int64 id = 1;
+    string name = 2;
+    repeated Member members = 3;
+
+    Slice slices = 10;
+
+    message Member {
+        string nodeID = 1;
+        Suffrage suffrage = 2;
+    }
+}
+
+message Database {
+    int32 id = 1;
+    string name = 2;
+    string description = 3;
+    fixed64 created = 4;
+    fixed64 changed = 5;
+    fixed64 dropped = 6;
+    fixed64 removed = 7;
+
+    // Slices
+    repeated Slice slices = 10;
+}
+
+message SliceID {
+    // Database ID
+    int32 databaseID = 1;
+    // Slice number
+    int32 sliceID = 2;
+}
+
+// Each Slice has it's own Raft group and represents some
+// range of the total slots of a database.
+message Slice {
+    SliceID id = 1;
+    // Ring
+    repeated SlotRange slots = 2;
+    // Membership
+    repeated SliceNode nodes = 3;
+}
+
+message SliceNode {
+    string nodeID = 1;
+    SliceID sliceID = 2;
+    RaftMember member = 3;
+
+}
+
+// A slice is a partition or shard represented by mapping a
+// range of Slots from the hash-ring. There are 16384 slots
+// in the hash-ring and a slice is mapped to at least one slot.
+//message Slice {
+//    int32 id = 1;
+//    Bucket bucket = 2;
+//    // A slice may have multiple ranges
+//    repeated SlotRange ranges = 3;
+//    repeated string nodeIds = 4;
+//}
+
+message Rebalance {
+    int64 timestamp = 1;
+    repeated Task tasks = 2;
+
+    message Task {
+        int32 from = 1;
+        int32 to = 2;
+        int32 low = 3;
+        int32 count = 4;
+    }
+}
+
+message Ring {
+    repeated SlotRange ranges = 2;
+}
+
+message SlotRange {
+    int32 slice = 1;
+    // The low slot
+    int32 low = 2;
+    // The high slot
+    int32 high = 3;
+}
+
+// Locally mounted volume
+message Drive {
+    string mount = 1;
+    Kind kind = 2;
+    DriveStats stats = 3;
+    bool working = 4;
+    string fileSystem = 5;
+
+    enum Kind {
+        HDD = 0;
+        SSD = 1;
+        NVME = 2;
+    }
+}
+
+message DriveStats {
+    uint64 size = 1;
+    uint64 used = 2;
+    uint64 avail = 3;
+}
+
+message CloudBucket {
+    string id = 1;
+    string accessKey = 2;
+    string secretKey = 3;
+    string url = 4;
+    API api = 5;
+
+    enum API {
+        S3 = 0;
+    }
+}
+
+message Bucket {
+    int64 id = 1;
+    string name = 2;
+}

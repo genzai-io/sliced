@@ -2,13 +2,18 @@ package document
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/genzai-io/sliced"
 	"github.com/genzai-io/sliced/common/gjson"
+	"github.com/genzai-io/sliced/common/spinlock"
 	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 )
 
 var nilMessageType = &MessageType{}
+
+type MessageVersions struct {
+}
 
 // Represents a single type of document or "prototype".
 // If a protobuf descriptor is assigned, then protobuf messages
@@ -26,6 +31,12 @@ var nilMessageType = &MessageType{}
 // Multiple path expressions can be listed for a "Multi" value projection.
 // Indexing is supported based on Projections that can be "keyed".
 type MessageType struct {
+	spinlock.Locker
+
+	Version    string
+	Timestamp  time.Time
+
+	Dynamic    bool
 	Parent     *MessageType
 	FQN        string
 	Path       string
@@ -107,6 +118,9 @@ func NewProto(parent *MessageType, file *ProtoFile, d *descriptor.DescriptorProt
 }
 
 func (p *MessageType) resolve() {
+	p.Lock()
+	defer p.Unlock()
+
 	for _, f := range p.Fields {
 		f.resolve()
 	}
@@ -119,26 +133,6 @@ func (p *MessageType) FieldByNumber(number int) *FieldType {
 	return p.FieldTable[number]
 }
 
-func (p *MessageType) Marshal() ([]byte, error) {
-	return nil, nil
-}
-
-func (p *MessageType) MarshalTo(b []byte) ([]byte, error) {
-	return nil, nil
-}
-
-func (p *MessageType) MarshalAs(t Type) ([]byte, error) {
-	return nil, nil
-}
-
-func (p *MessageType) MarshalToAs(b []byte, t Type) ([]byte, error) {
-	return nil, nil
-}
-
-func (p *MessageType) ReadProtobuf(doc protobufDocument) {
-
-}
-
 //func (p *MessageType) Get
 
 func ToDocument(b []byte) Document {
@@ -148,10 +142,10 @@ func ToDocument(b []byte) Document {
 
 	if b[0] == '{' {
 		// Create JSON document
-		return jsonDocument(b)
+		//return jsonDocument(b)
 	} else {
 		// Create Protobuf document
-		return protobufDocument(b)
+		//return protobufDocument(b)
 	}
 
 	return nil
@@ -159,6 +153,7 @@ func ToDocument(b []byte) Document {
 
 //
 type FieldType struct {
+	dynamic    bool
 	Parent     *MessageType
 	Descriptor *descriptor.FieldDescriptorProto
 	Label      descriptor.FieldDescriptorProto_Label
@@ -175,8 +170,8 @@ type FieldType struct {
 	JsonType     gjson.Type
 	ProtobufType descriptor.FieldDescriptorProto_Type
 
-	JsonProjector     jsonProjector
-	ProtobufProjector protobufProjector
+	//JsonProjector     jsonProjector
+	//ProtobufProjector protobufProjector
 }
 
 func NewField(parent *MessageType, descriptor *descriptor.FieldDescriptorProto) *FieldType {
@@ -189,10 +184,10 @@ func NewField(parent *MessageType, descriptor *descriptor.FieldDescriptorProto) 
 
 		ProtobufType: *descriptor.Type,
 		JsonType:     protobufTypeToJSONType(*descriptor.Type),
-		Type:         protobufTypeToSlicedType(*descriptor.Type),
+		Type:         pbufTypeToSlicedType(*descriptor.Type),
 
-		JsonProjector:     jsonProjector(*descriptor.JsonName),
-		ProtobufProjector: protobufProjector(*descriptor.Number),
+		//JsonProjector:     jsonProjector(*descriptor.JsonName),
+		//ProtobufProjector: protobufProjector(*descriptor.Number),
 	}
 
 	if f.JsonName == "" {
@@ -216,6 +211,8 @@ func (f *FieldType) resolve() {
 
 func (f *FieldType) IsDynamic() bool { return f.Descriptor == nil }
 
+func (f *FieldType) IsRepeated() bool { return f.Descriptor.IsRepeated() }
+
 //
 type EnumType struct {
 	Path   string
@@ -226,6 +223,7 @@ type EnumType struct {
 	Values []*EnumValue
 }
 
+//
 type EnumValue struct {
 	Enum   *EnumType
 	Index  int32
@@ -352,7 +350,7 @@ func protobufTypeToJSONType(t descriptor.FieldDescriptorProto_Type) gjson.Type {
 	return gjson.Null
 }
 
-func protobufTypeToSlicedType(t descriptor.FieldDescriptorProto_Type) moved.DataType {
+func pbufTypeToSlicedType(t descriptor.FieldDescriptorProto_Type) moved.DataType {
 	switch t {
 	// 0 is reserved for errors.
 	// Order is weird for historical reasons.
@@ -360,14 +358,14 @@ func protobufTypeToSlicedType(t descriptor.FieldDescriptorProto_Type) moved.Data
 		return moved.Float
 
 	case descriptor.FieldDescriptorProto_TYPE_FLOAT:
-		return moved.Float
+		return moved.Float32
 		// Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT64 if
 		// negative values are likely.
 	case descriptor.FieldDescriptorProto_TYPE_INT64:
 		return moved.Int
 
 	case descriptor.FieldDescriptorProto_TYPE_UINT64:
-		return moved.Int
+		return moved.Uint
 
 		// Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT32 if
 		// negative values are likely.
@@ -378,7 +376,7 @@ func protobufTypeToSlicedType(t descriptor.FieldDescriptorProto_Type) moved.Data
 		return moved.Int
 
 	case descriptor.FieldDescriptorProto_TYPE_FIXED32:
-		return moved.Int
+		return moved.Int32
 
 	case descriptor.FieldDescriptorProto_TYPE_BOOL:
 		return moved.Bool
@@ -394,23 +392,23 @@ func protobufTypeToSlicedType(t descriptor.FieldDescriptorProto_Type) moved.Data
 		return moved.String
 
 	case descriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		return moved.Any
+		return moved.Protobuf
 
 		// New in version 2.
 	case descriptor.FieldDescriptorProto_TYPE_BYTES:
 		return moved.String
 
 	case descriptor.FieldDescriptorProto_TYPE_UINT32:
-		return moved.Int
+		return moved.Uint32
 
 	case descriptor.FieldDescriptorProto_TYPE_ENUM:
-		return moved.Int
+		return moved.Int16
 	case descriptor.FieldDescriptorProto_TYPE_SFIXED32:
-		return moved.Int
+		return moved.Int32
 	case descriptor.FieldDescriptorProto_TYPE_SFIXED64:
 		return moved.Int
 	case descriptor.FieldDescriptorProto_TYPE_SINT32:
-		return moved.Int
+		return moved.Int32
 	case descriptor.FieldDescriptorProto_TYPE_SINT64:
 		return moved.Int
 	}

@@ -165,6 +165,7 @@ func (m *Map) SetWithHint(key string, hash, seed uint32, value unsafe.Pointer) (
 	}
 	var dist uint32 = 1
 	i := int(hash) & m.mask
+
 	for j := 0; ; j++ {
 		if m.entries[i].dist == 0 {
 			m.entries[i].dist = dist

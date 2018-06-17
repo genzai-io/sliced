@@ -7,13 +7,13 @@ package spmap
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"runtime"
 	"strconv"
 	"testing"
 	"time"
 	"unsafe"
 
+	"github.com/genzai-io/sliced/common/btree"
 	"github.com/genzai-io/sliced/common/spinlock"
 	"github.com/tidwall/lotsa"
 )
@@ -195,11 +195,12 @@ func TestRandomData(t *testing.T) {
 }
 
 func TestBench(t *testing.T) {
-	N, _ := strconv.ParseUint(os.Getenv("MAPBENCH"), 10, 64)
-	if N == 0 {
-		fmt.Printf("Enable benchmarks with MAPBENCH=1000000\n")
-		return
-	}
+	//N, _ := strconv.ParseUint(os.Getenv("MAPBENCH"), 10, 64)
+	//if N == 0 {
+	//	fmt.Printf("Enable benchmarks with MAPBENCH=1000000\n")
+	//	return
+	//}
+	N := 1000000
 	strs := random(int(N), false)
 	var pstrs []unsafe.Pointer
 	for i := range strs {
@@ -217,9 +218,9 @@ func TestBench(t *testing.T) {
 	t.Run("Stdlib", func(t *testing.T) {
 		testPerf(strs, pstrs, "stdlib")
 	})
-	// t.Run("BTree", func(t *testing.T) {
-	// 	testPerf(strs, "btree")
-	// })
+	//t.Run("BTree", func(t *testing.T) {
+	//	testPerf(strs, pstrs, "btree")
+	//})
 }
 
 func printItem(s string, size int, dir int) {
@@ -233,14 +234,14 @@ func printItem(s string, size int, dir int) {
 	fmt.Printf("%s ", s)
 }
 
-// type kvitemT struct {
-// 	key   string
-// 	value interface{}
-// }
+type kvitemT struct {
+	key   string
+	value interface{}
+}
 
-// func (a kvitemT) Less(b btree.Item) bool {
-// 	return a.key < b.(kvitemT).key
-// }
+func (a kvitemT) Less(b btree.Item, ctx interface{}) bool {
+	return a.key < b.(kvitemT).key
+}
 
 func testPerf(strs []string, pstrs []unsafe.Pointer, which string) {
 	var ms1, ms2 runtime.MemStats
@@ -342,16 +343,16 @@ func testPerf(strs []string, pstrs []unsafe.Pointer, which string) {
 			mu.Unlock()
 		}
 
-		// case "btree":
-		// 	tr := btree.New(128)
-		// 	setop = func(i, _ int) { tr.ReplaceOrInsert(kvitemT{strs[i], strs[i]}) }
-		// 	getop = func(i, _ int) { tr.Get(kvitemT{key: strs[i]}) }
-		// 	delop = func(i, _ int) { tr.Delete(kvitemT{key: strs[i]}) }
-		// 	scnop = func() {
-		// 		tr.Ascend(func(v btree.Item) bool {
-		// 			return true
-		// 		})
-		// 	}
+		case "btree":
+			tr := btree.New(128, nil)
+			setop = func(i, _ int) { tr.ReplaceOrInsert(kvitemT{strs[i], strs[i]}) }
+			getop = func(i, _ int) { tr.Get(kvitemT{key: strs[i]}) }
+			delop = func(i, _ int) { tr.Delete(kvitemT{key: strs[i]}) }
+			scnop = func() {
+				tr.Ascend(func(v btree.Item) bool {
+					return true
+				})
+			}
 	}
 	fmt.Printf("-- %s --", which)
 	if threads > 1 {

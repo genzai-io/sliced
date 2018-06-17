@@ -1,8 +1,15 @@
 syntax = "proto3";
 
-option go_package = "github.com/genzai-io/sliced/proto/api";
+import "proto/store.proto";
 
 package api;
+
+option go_package = "github.com/genzai-io/sliced/proto/api";
+
+option java_package = "io.genzai.sliced.model.api";
+//option java_outer_classname = "Store";
+option java_multiple_files = true;
+
 
 service APIService {
     rpc Auth (AuthRequest) returns (AuthReply);
@@ -25,4 +32,68 @@ message EventsRequest {
 }
 
 message Event {
+}
+
+
+message InitNode {
+    store.Node node = 1;
+}
+
+message AddNodeToGroup {
+    string nodeID = 1;
+    int64 groupID = 2;
+    store.Suffrage suffrage = 3;
+    bool bootstrap = 4;
+}
+
+message CreateDatabaseRequest {
+    string name = 1;
+}
+
+message CreateDatabaseReply {
+
+}
+
+message TxCreateTopic {
+    string name = 1;
+    store.Level level = 2;
+    string roller = 3;
+    string appID = 4;
+}
+
+message TxCreateQueue {
+    string name = 1;
+    store.Level level = 2;
+    string roller = 3;
+    bool fifo = 5;
+    uint64 maxInflight = 6;
+    uint64 maxVisibility = 7;
+    uint64 maxDelay = 8;
+    uint32 maxRetries = 9;
+    string appID = 10;
+}
+
+message TxCreateSegment {
+
+}
+
+message TxRoll {
+    int64 rollerID = 1;
+}
+
+message TxDeleteTopic {
+
+}
+
+message TxChangeRing {
+    repeated store.Slice from = 1;
+    repeated store.Slice to = 2;
+}
+
+message TxChangeRingCancel {
+}
+
+// Splits a topic based on a new ring signature
+message TxSplitTopic {
+
 }

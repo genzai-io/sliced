@@ -93,6 +93,12 @@
   version = "v1.3.1"
 
 [[projects]]
+  name = "github.com/cespare/xxhash"
+  packages = ["."]
+  revision = "5c37fe3735342a2e0d01c87a907579987c8936cc"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/couchbase/vellum"
   packages = [
@@ -101,6 +107,24 @@
     "utf8"
   ]
   revision = "980bce45b36de95c90cbade073ee0a9c50316e73"
+
+[[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "346938d642f2ec3594ed81d874461961cd0faa76"
+  version = "v1.1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/dgryski/go-bits"
+  packages = ["."]
+  revision = "bd8a69a71dc203aa976f9d918b428db9ac605f57"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/dgryski/go-metro"
+  packages = ["."]
+  revision = "280f6062b5bc97ee9b9afe7f2ccb361e59845baa"
 
 [[projects]]
   branch = "master"
@@ -202,6 +226,28 @@
   version = "v3.3.2"
 
 [[projects]]
+  name = "github.com/go-kit/kit"
+  packages = [
+    "log",
+    "log/level",
+    "log/term"
+  ]
+  revision = "4dc7be5d2d12881735283bcab7352178e190fc71"
+  version = "v0.6.0"
+
+[[projects]]
+  name = "github.com/go-logfmt/logfmt"
+  packages = ["."]
+  revision = "390ab7935ee28ec6b286364bba9b4dd6410cb3d5"
+  version = "v0.3.0"
+
+[[projects]]
+  name = "github.com/go-stack/stack"
+  packages = ["."]
+  revision = "259ab82a6cad3992b4e21ff5cac294ccb06474bc"
+  version = "v1.7.0"
+
+[[projects]]
   name = "github.com/gobwas/pool"
   packages = [
     ".",
@@ -209,6 +255,16 @@
   ]
   revision = "fa3125c39d7eca32e1387bb69b1b38dcb31b1e0b"
   version = "v0.2.0"
+
+[[projects]]
+  name = "github.com/gogo/protobuf"
+  packages = [
+    "gogoproto",
+    "proto",
+    "protoc-gen-gogo/descriptor"
+  ]
+  revision = "1adfc126b41513cc696b209667c8656ea7aac67c"
+  version = "v1.0.0"
 
 [[projects]]
   name = "github.com/golang/protobuf"
@@ -294,10 +350,26 @@
   version = "v1.0"
 
 [[projects]]
+  name = "github.com/influxdata/influxdb"
+  packages = [
+    "pkg/bits",
+    "pkg/estimator",
+    "pkg/estimator/hll"
+  ]
+  revision = "89e084a80fb1e0bf5e7d38038e3367f821fdf3d7"
+  version = "v1.5.3"
+
+[[projects]]
   name = "github.com/kavu/go_reuseport"
   packages = ["."]
   revision = "2943cf5bd5f8b178905122d93c73f5b773945efb"
   version = "v1.3.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/kr/logfmt"
+  packages = ["."]
+  revision = "b84e30acd515aadc4b783ad4ff83aff3299bdfe0"
 
 [[projects]]
   name = "github.com/magefile/mage"
@@ -348,6 +420,12 @@
   name = "github.com/mschoch/smat"
   packages = ["."]
   revision = "90eadee771aeab36e8bf796039b8c261bebebe4f"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/murlokswarm/errors"
+  packages = ["."]
+  revision = "2c535fcba8dc697cb75a5ea135f6194ee9169824"
 
 [[projects]]
   name = "github.com/onsi/ginkgo"
@@ -445,16 +523,22 @@
   version = "v0.1.1"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/pointc-io/pool"
   packages = ["."]
   revision = "7af0c2b5aaacaff557bab5910cd5b940f2822cff"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/pointc-io/sliced"
-  packages = ["index/celltree"]
-  revision = "d5e36145d7bd73493b5c8b8288e25ec16c36146c"
 
 [[projects]]
   branch = "master"
@@ -546,9 +630,43 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/stathat/go"
+  packages = ["."]
+  revision = "74669b9f388d9d788c97399a0824adbfee78400e"
+
+[[projects]]
+  branch = "master"
   name = "github.com/steveyen/gtreap"
   packages = ["."]
   revision = "0abe01ef9be25c4aedc174758ec2d917314d6d70"
+
+[[projects]]
+  name = "github.com/stretchr/testify"
+  packages = [
+    "assert",
+    "require"
+  ]
+  revision = "f35b8ab0b5a2cef36673838d662e249dd9c94686"
+  version = "v1.2.2"
+
+[[projects]]
+  name = "github.com/tendermint/go-wire"
+  packages = [
+    ".",
+    "data",
+    "data/base58"
+  ]
+  revision = "fa721242b042ecd4c6ed1a934ee740db4f74e45c"
+  version = "v0.7.3"
+
+[[projects]]
+  name = "github.com/tendermint/tmlibs"
+  packages = [
+    "common",
+    "log"
+  ]
+  revision = "692f1d86a6e2c0efa698fd1e4541b68c74ffaf38"
+  version = "v0.8.4"
 
 [[projects]]
   name = "github.com/tidwall/evio"
@@ -611,6 +729,12 @@
     "pm"
   ]
   revision = "ca850f594eaafa5468da2bd53b865e4ee55be18b"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/crypto"
+  packages = ["ripemd160"]
+  revision = "027cca12c2d63e3d62b670d901e8a2c95854feec"
 
 [[projects]]
   branch = "master"
@@ -723,6 +847,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5d12cb7f6455455e5a1c770fc29e25edecfde4e8d07b2e2cda6048e74171b563"
+  inputs-digest = "fea51532e283596bfbe55655cccf34a042c7c68fc7b4a4c4e30f6ca2358ca947"
   solver-name = "gps-cdcl"
   solver-version = 1
