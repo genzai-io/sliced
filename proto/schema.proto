@@ -1,0 +1,340 @@
+syntax = "proto3";
+
+//import "proto/cluster.proto";
+
+package schema;
+
+option go_package = "github.com/genzai-io/sliced/proto/schema";
+
+option java_package = "io.genzai.sliced.model.schema";
+//option java_outer_classname = "Store";
+option java_multiple_files = true;
+
+enum Level {
+    MISSION = 0;
+    BUSINESS = 1;
+    BACKGROUND = 2;
+}
+
+enum WireType {
+    TYPE_ERROR = 0;
+    // 0 is reserved for errors.
+    // Order is weird for historical reasons.
+    TYPE_DOUBLE = 1;
+    TYPE_FLOAT = 2;
+    // Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT64 if
+    // negative values are likely.
+    TYPE_INT64 = 3;
+    TYPE_UINT64 = 4;
+    // Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT32 if
+    // negative values are likely.
+    TYPE_INT32 = 5;
+    TYPE_FIXED64 = 6;
+    TYPE_FIXED32 = 7;
+    TYPE_BOOL = 8;
+    TYPE_STRING = 9;
+    // Tag-delimited aggregate.
+    // Group type is deprecated and not supported in proto3. However, Proto3
+    // implementations should still be able to parse the group wire format and
+    // treat group fields as unknown fields.
+    TYPE_GROUP = 10;
+    TYPE_MESSAGE = 11; // Length-delimited aggregate.
+
+    // New in version 2.
+    TYPE_BYTES = 12;
+    TYPE_UINT32 = 13;
+    TYPE_ENUM = 14;
+    TYPE_SFIXED32 = 15;
+    TYPE_SFIXED64 = 16;
+    TYPE_SINT32 = 17; // Uses ZigZag encoding.
+    TYPE_SINT64 = 18; // Uses ZigZag encoding.
+}
+
+enum DataType {
+    NIL = 0;
+    STRING = 1;
+    INT = 2;
+    UINT = 3;
+    INT32 = 4;
+    UINT32 = 5;
+    INT16 = 6;
+    UINT16 = 7;
+    INT8 = 8;
+    UINT8 = 9;
+
+    FLOAT = 10;
+    FLOAT32 = 11;
+
+    BOOL = 12;
+    RECT = 13;
+    TIME = 14;
+    BYTES = 15;
+    LIST = 17;
+    MAP = 18;
+    SET = 19;
+
+    MESSAGE = 20;
+
+    HYPERLOGLOG = 30;
+
+    UNKNOWN = 100;
+}
+
+enum JSType {
+    // Use the default type.
+    JS_NORMAL = 0;
+
+    // Use JavaScript strings.
+    JS_STRING = 1;
+
+    // Use JavaScript numbers.
+    JS_NUMBER = 2;
+
+    JS_BOOL = 3;
+}
+
+enum SQLType {
+    BIGINT = 0;
+}
+
+enum SQLFlavor {
+    MYSQL = 0;
+    POSTGRES = 1;
+    H2 = 10;
+}
+
+// Container
+message Module {
+    string name = 1;
+    string hash = 2;
+    fixed64 created = 3;
+    map<string, Package> packages = 5;
+    map<string, Store> stores = 6;
+}
+
+message Store {
+    string name = 1;
+    string module = 2;
+
+    repeated Package packages = 10;
+
+    message Package {
+        map<string, Queue> queues = 1;
+        map<string, Topic> topics = 2;
+    }
+}
+
+// Container of message types and enum types
+message Package {
+    string name = 1;
+    string path = 2;
+
+    map<string, Package> packages = 4;
+    map<string, Message> types = 5;
+    map<string, Enum> enums = 6;
+}
+
+message Message {
+    string name = 1;
+
+    string comments = 4;
+    bool deprecated = 5;
+
+    map<string, Field> fields = 8;
+    map<string, Enum> enums = 9;
+    map<string, Message> nested = 10;
+}
+
+
+message Field {
+    string name = 1;
+    int32 number = 2;
+
+    enum Label {
+        LABEL_ERROR = 0;
+        // 0 is reserved for errors
+        LABEL_OPTIONAL = 1;
+        LABEL_REQUIRED = 2;
+        LABEL_REPEATED = 3;
+    }
+    Label label = 3;
+
+    DataType type = 4;
+    WireType wireType = 5;
+
+    // The jstype option determines the JavaScript type used for values of the
+    // field.  The option is permitted only for 64 bit integral and fixed types
+    // (int64, uint64, sint64, fixed64, sfixed64).  A field with jstype JS_STRING
+    // is represented as JavaScript string, which avoids loss of precision that
+    // can happen when a large value is converted to a floating point JavaScript.
+    // Specifying JS_NUMBER for the jstype causes the generated JavaScript code to
+    // use the JavaScript "number" type.  The behavior of the default option
+    // JS_NORMAL is implementation dependent.
+    //
+    // This option is an enum to permit additional types to be added, e.g.
+    // goog.math.Integer.
+    JSType jsType = 6;
+
+    // JSON name of this field. The value is set by protocol compiler. If the
+    // user has set a "json_name" option on this field, that option's value
+    // will be used. Otherwise, it's deduced from the field's name by converting
+    // it to camelCase.
+    string json_name = 7;
+
+    // The packed option can be enabled for repeated primitive fields to enable
+    // a more efficient representation on the wire. Rather than repeatedly
+    // writing the tag and type for each element, the entire array is encoded as
+    // a single length-delimited blob. In proto3, only explicit setting it to
+    // false will avoid using packed encoding.
+    bool packed = 8;
+
+    // Is this field deprecated?
+    // Depending on the target platform, this can emit Deprecated annotations
+    // for accessors, or it will be completely ignored; in the very least, this
+    // is a formalization for deprecating fields.
+    bool deprecated = 9;
+
+    // For numeric types, contains the original text representation of the value.
+    // For booleans, "true" or "false".
+    // For strings, contains the default text contents (not escaped in any way).
+    // For bytes, contains the C escaped value.  All bytes >= 128 are escaped.
+    // TODO(kenton):  Base-64 encode?
+    string default_value = 10;
+
+    repeated string aliases = 11;
+}
+
+message Enum {
+    string name = 1;
+    repeated EnumOption options = 2;
+}
+
+message EnumOption {
+    string name = 1;
+    int32 number = 2;
+    bool deprecated = 3;
+}
+
+
+message MessageID {
+    fixed64 epoch = 1;
+    uint64 seq = 2;
+}
+
+enum FormatType {
+    FORMAT_MESSAGE = 0;
+    FORMAT_BLOB = 1;
+    FORMAT_CSV = 2;
+}
+
+message Format {
+    string name = 1;
+    FormatType type = 2;
+}
+
+message Topic {
+    string name = 1;
+    Format format = 2;
+    TopicType type = 3;
+
+    //    bool sql = 9;
+    Key pk = 10;
+    repeated Key secondary = 11;
+
+    enum TopicType {
+        TOPIC_LOG = 0;
+        TOPIC_TABLE = 1;
+        TOPIC_INDEX = 2;
+    }
+}
+
+message Table {
+
+}
+
+enum IndexType {
+    INDEX_BTREE = 0;
+    INDEX_RTREE = 1;
+    INDEX_FULLTEXT = 2;
+    INDEX_MESSAGE_ID = 3;
+    INDEX_AUTO_INCREMENT = 4;
+}
+
+//
+message Key {
+    string name = 1;
+    IndexType type = 2;
+    repeated KeyField fields = 5;
+}
+
+message KeyField {
+    // The fully qualified path from the root message.
+    string path = 1;
+    bool desc = 2;
+    bool caseInsensitive = 3;
+}
+
+// Provides a Job Queue pattern around 3 different topics
+message Queue {
+    // Name of queue within package
+    string name = 1;
+    // The request topic name
+    string request = 3;
+    // The reply topic name
+    string reply = 4;
+    // Dead-Letter topic name
+    string error = 5;
+    // Management level
+    Level level = 6;
+    // Fifo order
+    bool fifo = 7;
+    // Options
+    QueueOptions options = 10;
+}
+
+message QueueOptions {
+    uint64 maxInflight = 1;
+    uint64 maxVisibility = 2;
+    uint64 maxDelay = 3;
+    uint32 maxRetries = 4;
+}
+
+message JobRegister {
+    repeated EventType types = 1;
+
+    message EventType {
+        string queue = 1;
+    }
+}
+
+message JobPoll {
+    int32 max = 1;
+    int32 memory = 2;
+
+    repeated string queues = 5;
+}
+
+message JobReply {
+    uint64 queueID = 1;
+    repeated Job jobs = 2;
+}
+
+message Job {
+    MessageID id = 1;
+    int32 count = 2;
+    uint64 deadline = 3;
+}
+
+message ACK {
+    MessageID id = 1;
+    Code code = 2;
+    // Message payload
+    bytes payload = 5;
+
+    enum Code {
+        OK = 0;
+        TIME = 1;
+        FORMAT = 2;
+    }
+}
+

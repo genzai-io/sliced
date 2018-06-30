@@ -108,7 +108,7 @@ func (mt *MessageType) PBUFKeyIterator(buf []byte, fieldFn func(number int) *Fie
 			}
 			buf = buf[n:]
 
-			entry.Key = pbufVarintToKey(entry.Field.ProtobufType, v)
+			entry.Key = pbufVarintToKey(entry.Field.WireType, v)
 
 		case 5: // 32-bit
 			if len(buf) < 4 {
@@ -146,7 +146,7 @@ func (mt *MessageType) PBUFKeyIterator(buf []byte, fieldFn func(number int) *Fie
 			vb = buf[n : n+int(v) : n+int(v)]
 			buf = buf[n+int(v):]
 
-			if entry.Field.ProtobufType == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
+			if entry.Field.WireType == descriptor.FieldDescriptorProto_TYPE_MESSAGE {
 				//field.Descriptor.TypeName
 				entry.Field.Message.PBUFKeyIterator(vb, entry.Field.Message.FieldByNumber, func(entry *PBUFKey) bool {
 					return true
@@ -319,7 +319,7 @@ func (mt *MessageType) PBUFGet(buf []byte, fields []*FieldType, keys []table.Key
 				}
 			}
 
-			keys[fieldidx] = pbufVarintToKey(field.ProtobufType, key)
+			keys[fieldidx] = pbufVarintToKey(field.WireType, key)
 
 		case 5: // 32-bit
 			index += 4
@@ -502,7 +502,7 @@ func (mt *FieldType) PBUFGet(buf []byte) (table.Key, error) {
 				}
 			}
 
-			return pbufVarintToKey(mt.ProtobufType, key), nil
+			return pbufVarintToKey(mt.WireType, key), nil
 
 		case 5: // 32-bit
 			index += 4

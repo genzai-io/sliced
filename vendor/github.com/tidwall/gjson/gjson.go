@@ -583,6 +583,8 @@ func (t Result) Exists() bool {
 //	Number, for JSON numbers
 //	string, for JSON string literals
 //	nil, for JSON null
+//	map[string]interface{}, for JSON objects
+//	[]interface{}, for JSON arrays
 //
 func (t Result) Value() interface{} {
 	if t.Type == String {
@@ -1863,8 +1865,14 @@ func validobject(data []byte, i int) (outi int, ok bool) {
 			if data[i] == '}' {
 				return i + 1, true
 			}
+			i++
 			for ; i < len(data); i++ {
-				if data[i] == '"' {
+				switch data[i] {
+				default:
+					return i, false
+				case ' ', '\t', '\n', '\r':
+					continue
+				case '"':
 					goto key
 				}
 			}
@@ -2053,6 +2061,20 @@ func validnull(data []byte, i int) (outi int, ok bool) {
 //
 func Valid(json string) bool {
 	_, ok := validpayload([]byte(json), 0)
+	return ok
+}
+
+// ValidBytes returns true if the input is valid json.
+//
+//  if !gjson.Valid(json) {
+//  	return errors.New("invalid json")
+//  }
+//  value := gjson.Get(json, "name.last")
+//
+// If working with bytes, this method preferred over Valid(string(data))
+//
+func ValidBytes(json []byte) bool {
+	_, ok := validpayload(json, 0)
 	return ok
 }
 

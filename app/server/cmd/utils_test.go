@@ -806,7 +806,7 @@ func (i isInt) Test(reply Reply) bool {
 	return false
 }
 func (i isInt) String() string {
-	return fmt.Sprintf("Int(%s)", i.value)
+	return fmt.Sprintf("Int(%d)", i.value)
 }
 
 //

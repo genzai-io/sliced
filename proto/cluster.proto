@@ -1,8 +1,6 @@
 syntax = "proto3";
 
-import "proto/store.proto";
-
-package api;
+package cluster;
 
 option go_package = "github.com/genzai-io/sliced/proto/cluster";
 
@@ -33,14 +31,74 @@ enum Suffrage {
     STAGING = 2;
 }
 
+// Definition of a roller which decides when to create new segment files.
+message Roller {
+    uint64 id = 1;
+    string name = 2;
+    uint64 minBytes = 3;
+    uint64 minAge = 4;
+    uint64 minCount = 5;
+    uint64 maxBytes = 6;
+    uint64 maxAge = 7;
+    uint64 maxCount = 8;
+}
+
+enum Language {
+    UNKNOWN = 0;
+    JAVA = 1;
+    TYPESCRIPT = 2;
+    JAVASCRIPT = 3;
+    GO = 4;
+    CPP = 5;
+    RUST = 6;
+    DOTNET = 7;
+    PYTHON = 8;
+    RUBY = 9;
+    PHP = 10;
+}
+
 // Worker Application
 message App {
     uint64 id = 1;
-    string name = 2;
-    string desc = 3;
+    string name = 2; // io.genzai.myApp
+    string description = 3;
 
-    repeated string versions = 9;
     repeated string tags = 10;
+}
+
+message AppVersion {
+    uint64 id = 1;
+    uint64 appID = 2;
+    Version version = 3;
+    Language language = 4;
+    uint64 size = 5;
+    string sha256 = 6;
+}
+
+message Schema {
+    string sha256 = 1;
+}
+
+message SchemaMessage {
+
+}
+
+
+
+message SchemaStore {
+    string name = 1;
+}
+
+message SchemaTopic {
+    string store = 1;
+    string name = 2;
+}
+
+message Version {
+    uint64 major = 1;
+    uint64 minor = 2;
+    uint64 patch = 3;
+    repeated string build = 4;
 }
 
 // A Processor node is a client app that connects to the cluster

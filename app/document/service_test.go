@@ -8,6 +8,7 @@ import (
 
 	"github.com/genzai-io/sliced/app/table"
 	"github.com/genzai-io/sliced/common/gjson"
+	"github.com/genzai-io/sliced/proto/schema"
 	"github.com/genzai-io/sliced/proto/store"
 )
 
@@ -25,7 +26,7 @@ func createService() (*ProtoService, *ProtoFile) {
 	srv = NewProtoService()
 	srv.Start()
 
-	gz, _ := (&store.Topic{}).Descriptor()
+	gz, _ := (&schema.Schema{}).Descriptor()
 
 	f, err := Service.AddFile(gz)
 	if err != nil {
@@ -39,6 +40,9 @@ func createService() (*ProtoService, *ProtoFile) {
 
 func Test_ProtoService(t *testing.T) {
 	_, file := createService()
+
+	schemaProto := file.Messages["Schema"]
+	_ = schemaProto
 
 	topicProto := file.Messages["Topic"]
 
@@ -90,7 +94,7 @@ func Test_ProtoService(t *testing.T) {
 
 	//topicProto.PBUFKeyIterator(data, topicProto.FieldByNumber, func(entry *PBUFKey) bool {
 	//	if entry.Field != nil {
-	//		fmt.Println(fmt.Sprintf("Field Name: %s\nField Type:%s\n", entry.Field.Name, entry.Field.ProtobufType))
+	//		fmt.Println(fmt.Sprintf("Field Name: %s\nField Type:%s\n", entry.Field.Name, entry.Field.WireType))
 	//	}
 	//	fmt.Println(entry.Key)
 	//	return true

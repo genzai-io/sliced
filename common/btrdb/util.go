@@ -2,6 +2,8 @@ package btrdb
 
 import (
 	"encoding/binary"
+	"reflect"
+	"unsafe"
 
 	"github.com/genzai-io/sliced/common/gjson"
 )
@@ -98,4 +100,17 @@ func IsInt(val interface{}) bool {
 		return true
 	}
 	return false
+}
+
+func CastToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+func CastToBytes(s string) []byte {
+	strh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	var sh reflect.SliceHeader
+	sh.Data = strh.Data
+	sh.Len = strh.Len
+	sh.Cap = strh.Len
+	return *(*[]byte)(unsafe.Pointer(&sh))
 }

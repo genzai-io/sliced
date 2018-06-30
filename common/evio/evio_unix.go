@@ -158,6 +158,8 @@ type loop struct {
 	packet  []byte         // read packet buffer
 	fdconns map[int]*conn  // loop connections fd -> conn
 	count   int32          // connection count
+
+	Helpers LoopHelpers
 }
 
 func (s *server) SignalShutdown() error {
@@ -315,7 +317,6 @@ func loopNote(s *server, l *loop, note interface{}) error {
 	return err
 }
 
-
 func loopRun(s *server, l *loop) {
 	defer func() {
 		//fmt.Println("-- loop stopped --", l.idx)
@@ -327,8 +328,8 @@ func loopRun(s *server, l *loop) {
 		go loopTicker(s, l)
 	}
 
-	loop:
-	//fmt.Println("-- loop started --", l.idx)
+loop:
+//fmt.Println("-- loop started --", l.idx)
 	for {
 		if err := l.poll.Wait(func(fd int, note interface{}) error {
 			if fd == 0 {

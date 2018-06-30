@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package store;
 
+import "proto/cluster.proto";
+
 option go_package = "github.com/genzai-io/sliced/proto/store";
 
 option java_package = "io.genzai.sliced.model.store";
@@ -16,11 +18,6 @@ message MessageType {
 message RecordID {
     uint64 epoch = 1;
     uint64 seq = 2;
-}
-
-message Record {
-    Projection key = 1;
-    Projection slice = 2;
 }
 
 message Projection {
@@ -51,9 +48,14 @@ message Index {
     }
 }
 
+message TopicObject {
+
+}
+
 // Low level append-only log of user-defined records.
 message Topic {
     string schema = 15;
+    bytes descriptor = 16;
 
     int64 id = 1;
     string name = 2;
@@ -86,17 +88,6 @@ message Topic {
     }
 }
 
-// Definition of a roller which decides when to create new segment files.
-message Roller {
-    uint64 id = 1;
-    string name = 2;
-    uint64 minBytes = 3;
-    uint64 minAge = 4;
-    uint64 minCount = 5;
-    uint64 maxBytes = 6;
-    uint64 maxAge = 7;
-    uint64 maxCount = 8;
-}
 
 message Path {
     // Name of file
@@ -124,6 +115,9 @@ message Hash {
 
     enum Algorithm {
         CRC32 = 0;
+        SHA256 = 1;
+        MD5 = 2;
+        MURMUR3 = 3;
     }
 }
 
@@ -199,7 +193,7 @@ message Queue {
     // ERR or Dead-Letter stream
     uint64 errorID = 5;
     // Management level
-    Level level = 6;
+    cluster.Level level = 6;
     // Fifo order
     bool fifo = 10;
     uint64 maxInflight = 11;
@@ -231,5 +225,5 @@ message Ack {
 message Daemon {
     uint64 id = 1;
     string name = 2;
-    Level level = 3;
+    //    Level level = 3;
 }

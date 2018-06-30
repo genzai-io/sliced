@@ -54,25 +54,18 @@ func TestCmdConnMultipleWorkers(t *testing.T) {
 	conn.
 		Send(&cmd.Get{Key: "hi"}).
 		ShouldReply(t, WithBulk).
-
 		Send(&cmd.Sleep{Millis: 50}).
 		ShouldNotReply(t).
-
 		Send(&cmd.Sleep{Millis: 50}).
 		ShouldNotReply(t).
-
 		Send(&cmd.Get{Key: "hi"}).
 		ShouldNotReply(t).
-
 		Send(&cmd.Get{Key: "hi"}).
 		ShouldNotReply(t).
-
 		Send(&cmd.Get{Key: "hi"}).
 		ShouldNotReply(t).
-
 		Send(&cmd.Get{Key: "hi"}).
 		ShouldNotReply(t).conn.
-
 		ShouldWakeWithin(t, time.Second)
 
 	// Simulate enough time to finish all commands.
@@ -127,20 +120,17 @@ func TestCmdConnMulti(t *testing.T) {
 	conn.
 		Send(api.BulkString("multi")).
 		ShouldReply(t, WithOK).
-
 		Send(&cmd.Get{Key: "a"}).
 		ShouldReply(t, WithQueued).
-
 		Send(&cmd.Get{Key: "b"}).
 		ShouldReply(t, WithQueued).
-
 		Send(api.BulkString("exec")).
 		ShouldReply(t, WithArray)
 }
 
 //
 func TestCmdConnMultiWorker(t *testing.T) {
-	//dumpPackets = true
+	dumpPackets = true
 
 	conn := newMockConn()
 	defer conn.close()
@@ -148,17 +138,14 @@ func TestCmdConnMultiWorker(t *testing.T) {
 	conn.
 		Send(api.BulkString("multi")).
 		ShouldReply(t, WithOK).
-
 		Send(&cmd.Get{Key: "a"}).
 		ShouldReply(t, WithQueued).
-
 		Send(&cmd.Get{Key: "b"}).
 		ShouldReply(t, WithQueued).
-
 		Send(&cmd.Sleep{Millis: 50}).
 		ShouldReply(t, WithQueued).
 
-	// "exec" should have empty reply packet
+		// "exec" should have empty reply packet
 		Send(api.BulkString("exec")).
 		ShouldNotReply(t)
 
@@ -179,20 +166,16 @@ func TestCmdConnMultiWorkerDiscard(t *testing.T) {
 	conn.
 		Send(api.BulkString("multi")).
 		ExpectOK(t).
-
 		Send(&cmd.Get{Key: "a"}).
 		ExpectQueued(t).
-
 		Send(&cmd.Get{Key: "b"}).
 		ExpectQueued(t).
-
 		Send(&cmd.Sleep{Millis: 50}).
 		ExpectQueued(t).
-
 		Send(api.BulkString("discard")).
 		ExpectOK(t).
 
-	// "exec" should have empty reply packet
+		// "exec" should have empty reply packet
 		Send(api.BulkString("exec")).
 		ExpectError(t)
 

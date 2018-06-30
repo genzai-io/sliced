@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/genzai-io/sliced"
-	"github.com/genzai-io/sliced/common/gjson"
 	"github.com/genzai-io/sliced/common/spinlock"
 	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/valyala/fastjson"
 )
 
 var nilMessageType = &MessageType{}
@@ -166,12 +166,9 @@ type FieldType struct {
 	Message *MessageType
 	Enum    *EnumType
 
-	Type         moved.DataType
-	JsonType     gjson.Type
-	ProtobufType descriptor.FieldDescriptorProto_Type
-
-	//JsonProjector     jsonProjector
-	//ProtobufProjector protobufProjector
+	Type     moved.DataType
+	JsonType fastjson.Type
+	WireType descriptor.FieldDescriptorProto_Type
 }
 
 func NewField(parent *MessageType, descriptor *descriptor.FieldDescriptorProto) *FieldType {
@@ -182,9 +179,9 @@ func NewField(parent *MessageType, descriptor *descriptor.FieldDescriptorProto) 
 		Number:     *descriptor.Number,
 		JsonName:   *descriptor.JsonName,
 
-		ProtobufType: *descriptor.Type,
-		JsonType:     protobufTypeToJSONType(*descriptor.Type),
-		Type:         pbufTypeToSlicedType(*descriptor.Type),
+		WireType: *descriptor.Type,
+		JsonType: protobufTypeToJSONType(*descriptor.Type),
+		Type:     pbufTypeToSlicedType(*descriptor.Type),
 
 		//JsonProjector:     jsonProjector(*descriptor.JsonName),
 		//ProtobufProjector: protobufProjector(*descriptor.Number),
@@ -198,7 +195,7 @@ func NewField(parent *MessageType, descriptor *descriptor.FieldDescriptorProto) 
 }
 
 func (f *FieldType) resolve() {
-	switch f.ProtobufType {
+	switch f.WireType {
 	case descriptor.FieldDescriptorProto_TYPE_MESSAGE:
 		typeName := *f.Descriptor.TypeName
 		f.Message, _ = f.Parent.File.Messages[typeName]
@@ -285,69 +282,69 @@ type ProtoProjection interface {
 	FieldAt(i int) FieldType
 }
 
-func protobufTypeToJSONType(t descriptor.FieldDescriptorProto_Type) gjson.Type {
+func protobufTypeToJSONType(t descriptor.FieldDescriptorProto_Type) fastjson.Type {
 	switch t {
 	// 0 is reserved for errors.
 	// Order is weird for historical reasons.
 	case descriptor.FieldDescriptorProto_TYPE_DOUBLE:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_FLOAT:
-		return gjson.Number
+		return fastjson.TypeNumber
 		// Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT64 if
 		// negative values are likely.
 	case descriptor.FieldDescriptorProto_TYPE_INT64:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_UINT64:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 		// Not ZigZag encoded.  Negative numbers take 10 bytes.  Use TYPE_SINT32 if
 		// negative values are likely.
 	case descriptor.FieldDescriptorProto_TYPE_INT32:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_FIXED64:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_FIXED32:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_BOOL:
-		return gjson.Bool
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_STRING:
-		return gjson.String
+		return fastjson.TypeString
 
 		// Tag-delimited aggregate.
 		// Group type is deprecated and not supported in proto3. However, Proto3
 		// implementations should still be able to parse the group wire format and
 		// treat group fields as unknown fields.
 	case descriptor.FieldDescriptorProto_TYPE_GROUP:
-		return gjson.String
+		return fastjson.TypeString
 
 	case descriptor.FieldDescriptorProto_TYPE_MESSAGE:
-		return gjson.JSON
+		return fastjson.TypeObject
 
 		// New in version 2.
 	case descriptor.FieldDescriptorProto_TYPE_BYTES:
-		return gjson.String
+		return fastjson.TypeString
 
 	case descriptor.FieldDescriptorProto_TYPE_UINT32:
-		return gjson.Number
+		return fastjson.TypeNumber
 
 	case descriptor.FieldDescriptorProto_TYPE_ENUM:
-		return gjson.Number
+		return fastjson.TypeNumber
 	case descriptor.FieldDescriptorProto_TYPE_SFIXED32:
-		return gjson.Number
+		return fastjson.TypeNumber
 	case descriptor.FieldDescriptorProto_TYPE_SFIXED64:
-		return gjson.Number
+		return fastjson.TypeNumber
 	case descriptor.FieldDescriptorProto_TYPE_SINT32:
-		return gjson.Number
+		return fastjson.TypeNumber
 	case descriptor.FieldDescriptorProto_TYPE_SINT64:
-		return gjson.Number
+		return fastjson.TypeNumber
 	}
-	return gjson.Null
+	return fastjson.TypeNull
 }
 
 func pbufTypeToSlicedType(t descriptor.FieldDescriptorProto_Type) moved.DataType {

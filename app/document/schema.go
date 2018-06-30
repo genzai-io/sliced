@@ -1,7 +1,11 @@
 package document
 
-import "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+import (
+	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+)
 
+//
+//
 //
 type ProtoFile struct {
 	Name string
@@ -33,3 +37,5 @@ func NewProtoFile(hash, gzipHash string, descriptor *descriptor.FileDescriptorPr
 
 	return file
 }
+
+

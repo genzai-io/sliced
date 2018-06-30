@@ -558,7 +558,7 @@
     "registry",
     "token"
   ]
-  revision = "03d472dc43abece8691e609a23d295ab732abba6"
+  revision = "15f95af6e78dcd2030d8195a138bd88d4f403546"
 
 [[projects]]
   name = "github.com/rs/cors"
@@ -581,7 +581,7 @@
   branch = "master"
   name = "github.com/ry/v8worker2"
   packages = ["."]
-  revision = "e8e3a472003d587ace2789910f63c37da35d28cc"
+  revision = "8aa233cd35a99264c75c4a045a8d27429b2376f4"
 
 [[projects]]
   branch = "master"
@@ -680,8 +680,8 @@
 [[projects]]
   name = "github.com/tidwall/gjson"
   packages = ["."]
-  revision = "01f00f129617a6fe98941fb920d6c760241b54d2"
-  version = "v1.1.0"
+  revision = "afaeb9562041a8018c74e006551143666aed08bf"
+  version = "v1.1.1"
 
 [[projects]]
   branch = "master"
@@ -712,6 +712,15 @@
   packages = ["msgp"]
   revision = "b2b6a672cf1e5b90748f79b8b81fc8c5cf0571a1"
   version = "1.0.2"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/valyala/fastjson"
+  packages = [
+    ".",
+    "fastfloat"
+  ]
+  revision = "285c99e3c48d7d678e699a1baf3f70830889f21f"
 
 [[projects]]
   name = "github.com/willf/bitset"
@@ -757,7 +766,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "a9e25c09b96b8870693763211309e213c6ef299d"
+  revision = "6c888cc515d3ed83fc103cf1d84468aad274b0a7"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -847,6 +856,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fea51532e283596bfbe55655cccf34a042c7c68fc7b4a4c4e30f6ca2358ca947"
+  inputs-digest = "ba002995a03a45732dfed56e74bd23bdb1703f3dd2abd20b260685d3d25ff4a9"
   solver-name = "gps-cdcl"
   solver-version = 1

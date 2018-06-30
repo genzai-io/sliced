@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "proto/store.proto";
+import "proto/cluster.proto";
 
 package api;
 
@@ -36,13 +37,13 @@ message Event {
 
 
 message InitNode {
-    store.Node node = 1;
+    cluster.Node node = 1;
 }
 
 message AddNodeToGroup {
     string nodeID = 1;
     int64 groupID = 2;
-    store.Suffrage suffrage = 3;
+    cluster.Suffrage suffrage = 3;
     bool bootstrap = 4;
 }
 
@@ -56,14 +57,14 @@ message CreateDatabaseReply {
 
 message TxCreateTopic {
     string name = 1;
-    store.Level level = 2;
+    cluster.Level level = 2;
     string roller = 3;
     string appID = 4;
 }
 
 message TxCreateQueue {
     string name = 1;
-    store.Level level = 2;
+    cluster.Level level = 2;
     string roller = 3;
     bool fifo = 5;
     uint64 maxInflight = 6;
@@ -86,8 +87,8 @@ message TxDeleteTopic {
 }
 
 message TxChangeRing {
-    repeated store.Slice from = 1;
-    repeated store.Slice to = 2;
+    repeated cluster.Slice from = 1;
+    repeated cluster.Slice to = 2;
 }
 
 message TxChangeRingCancel {

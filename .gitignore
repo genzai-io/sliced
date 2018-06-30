@@ -5,6 +5,9 @@
 *.dylib
 .idea
 
+.gradle
+.gogradle
+
 # Test binary, build with `go test -c`
 *.test
 node_modules
